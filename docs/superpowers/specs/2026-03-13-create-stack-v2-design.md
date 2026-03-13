@@ -57,9 +57,13 @@ Core principle: **The agent is the architect. Official tools and current docs ar
 
 3. **MCP Servers** — External MCP servers (starting with Context7) provide current documentation and best practices. The agent queries these when it needs up-to-date information for recommendations or code generation.
 
+**MCP integration model:** For v2, use the Anthropic API's native MCP connector via `client.beta.messages.create()` with the `mcp_servers` parameter (requires `anthropic-beta: mcp-client-2025-11-20` header). This works with remote HTTPS MCP servers — Context7 provides a hosted endpoint. The API handles tool discovery and execution transparently; MCP tools appear alongside local tools as `mcp_tool_use` / `mcp_tool_result` blocks. The `@modelcontextprotocol/sdk` client library is not needed for v2 — it's a future extension for local/custom MCP servers via stdio transport.
+
 ## Agent Loop
 
 ### Loop Structure
+
+**Phase 1 — Conversation loop (choosing the stack):**
 
 ```
 1. Build system prompt (persona + stage definitions + current progress)
@@ -68,8 +72,22 @@ Core principle: **The agent is the architect. Official tools and current docs ar
 4. For each tool_use → execute tool → append tool_result
 5. If Claude responded with text → render to terminal, get user input
 6. Append user message → go to 2
-7. When Claude calls present_plan → exit loop, show review
+7. When Claude calls present_plan → exit loop, show plan for review
 ```
+
+**Phase 2 — Scaffold loop (building the project):**
+
+After user approves the plan, a second agent loop runs with a scaffold-focused system prompt. Claude has access to `run_scaffold`, `add_integration`, and MCP tools. This loop does not take user input — it executes the plan autonomously, streaming progress to the terminal. If an error occurs, Claude can retry or report the failure.
+
+```
+1. Build scaffold system prompt (plan + available tools)
+2. Send to Claude
+3. Claude calls run_scaffold (base), then add_integration (each layer)
+4. For each tool_use → execute → append tool_result → continue
+5. When Claude stops calling tools → scaffold complete
+```
+
+The `max_tokens` for the conversation loop is 4096 (sufficient for explanations and option presentation). The scaffold loop uses 16384 (Claude generates complete integration files which can be large).
 
 ### System Prompt
 
@@ -115,19 +133,29 @@ Progress is updated when Claude calls `set_decision`. It's injected into the sys
 - **Every turn:** System prompt is rebuilt with current progress state
 - **Within a stage:** Full conversation history preserved
 - **Across stages:** Structured decisions are the source of truth
-- **Summarization:** Claude has a `summarize_stage` tool it can call when a stage conversation has gotten long or circular. Most stages are brief (2-3 exchanges) and don't need summarization. When called, the detailed conversation turns for that stage are replaced with a concise summary.
+- **Summarization:** Claude has a `summarize_stage` tool it can call when a stage conversation has gotten long or circular. Most stages are brief (2-3 exchanges) and don't need summarization. When called, the `agent/loop.ts` message history manager replaces the detailed conversation turns for that stage with a single `assistant` message containing the summary. The replacement must maintain valid alternating `user`/`assistant` role structure in the message array — if needed, insert a synthetic `user` message like "[Continuing to next topic]" to preserve alternation.
 - **Going back:** If the user wants to revisit a decision, the CLI clears that decision from progress state. Claude sees it as "not yet decided" and reopens the topic.
 
 ### Tools
 
-| Tool | Purpose | When called |
-|------|---------|-------------|
-| `set_decision(category, component, reasoning, scaffoldTool?, scaffoldArgs?)` | Commit a stack decision to structured state | After user confirms a component choice |
-| `summarize_stage(category, summary)` | Replace a stage's conversation turns with a concise summary | When a stage discussion was long/circular |
-| `present_plan()` | Signal that all decisions are made, trigger the review step | When the agent believes the stack is complete |
-| `run_scaffold(tool, args)` | Execute an official scaffold CLI command | During the scaffolding phase |
-| `add_integration(files, dependencies, devDependencies, envVars)` | Write integration files, install deps, update .env.example | During the integration phase |
-| MCP tools (Context7 etc.) | Query current documentation for frameworks/libraries | When generating integration code or explaining options |
+**Conversation phase tools** (available during Phase 1 — stack selection):
+
+| Tool | Input Schema | Purpose |
+|------|-------------|---------|
+| `set_decision` | `{ category: string, component: string, reasoning: string, scaffoldTool?: string, scaffoldArgs?: string[] }` | Commit a stack decision to structured state |
+| `summarize_stage` | `{ category: string, summary: string }` | Replace a stage's conversation turns with a concise summary |
+| `present_plan` | `{}` (no params) | Signal all decisions are made, trigger review step |
+
+**Scaffold phase tools** (available during Phase 2 — project generation):
+
+| Tool | Input Schema | Purpose |
+|------|-------------|---------|
+| `run_scaffold` | `{ tool: string, args: string[] }` | Execute an official scaffold CLI command (e.g., `create-next-app`) |
+| `add_integration` | `{ files: Record<string, string>, dependencies?: Record<string, string>, devDependencies?: Record<string, string>, envVars?: string[] }` | Write files (keys = dest paths relative to project root, values = file contents), install deps, append env vars to `.env.example` |
+
+**MCP tools** (available in both phases): Context7 and other MCP server tools are discovered automatically via the Anthropic API's MCP connector. They appear as `mcp_tool_use` blocks alongside local tools.
+
+**`set_decision` category values:** Use the `StackProgress` field names: `"frontend"`, `"backend"`, `"database"`, `"auth"`, `"payments"`, `"deployment"`. For extras, use `"extras"` — multiple `set_decision` calls with `category: "extras"` append to the `extras` array rather than overwriting.
 
 ## Conversation Stages
 
@@ -237,7 +265,7 @@ create-stack/
 - `.gitignore`
 
 **New dependencies:**
-- MCP SDK (client-side, for connecting to MCP servers)
+- None for v2 — MCP is handled via the Anthropic API's native MCP connector (no separate SDK needed)
 
 **Removed dependencies:**
 - None significant (keep `@clack/prompts`, `@anthropic-ai/sdk`, `zod`, etc.)
@@ -245,10 +273,12 @@ create-stack/
 ## Error Handling
 
 - **MCP server unavailable:** Agent falls back to its training knowledge. Warns the user that docs may not be fully current.
+- **MCP server auth failure:** If Context7 or another MCP server requires an API key and it's missing or invalid, the agent logs a warning and proceeds without that MCP server. The conversation can still work — recommendations come from Claude's training knowledge, just without the latest docs grounding.
 - **Official scaffold tool fails:** Agent sees the error output, explains it, suggests fixes.
+- **Target directory already exists:** Before running the base scaffold, the CLI checks if the output directory exists. If non-empty, it fails with a clear error: "Directory `<name>` already exists and is not empty. Choose a different name or delete it first." No `--overwrite` flag for v2.
 - **Integration code generation fails:** Agent reports the issue, can retry with different approach.
 - **User cancels mid-conversation:** Exit cleanly, no files written (scaffold hasn't happened yet).
-- **API key missing:** Clear error with setup instructions (same as v1).
+- **API key missing:** Clear error with setup instructions. Required: `ANTHROPIC_API_KEY`. Optional: MCP server credentials (e.g., Context7 API key) — the tool works without them but with reduced doc freshness.
 
 ## Future Extension Points
 

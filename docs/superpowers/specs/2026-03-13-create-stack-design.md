@@ -148,7 +148,7 @@ Template metadata format:
 2. Copies files into scaffolded project at specified paths. **Module files always overwrite template files** — templates should be designed to not conflict, but if they do, the module wins. This is intentional: modules are specializations applied on top of the base template.
 3. Runs token replacement on copied module files using the same token map as `scaffold.ts`. Module files may contain `__PROJECT_NAME__` and other tokens. After replacement, warns on any unresolved `__TOKEN__` patterns (same validation as scaffold step).
 4. Merges dependencies into `package.json`. **If a dependency already exists in the template's `package.json` at a different version, the module version wins.** This keeps behavior deterministic — modules are the specialization layer and take precedence.
-5. Appends env vars to `.env.example`
+5. Appends env vars to `.env.example`. Creates the file if it does not exist.
 
 Module metadata format:
 ```json
@@ -161,6 +161,8 @@ Module metadata format:
     "lib/auth.ts": "files/auth.ts",
     "middleware.ts": "files/middleware.ts"
   }
+  // Keys = destination paths (relative to scaffolded project root)
+  // Values = source paths (relative to the module directory)
 }
 ```
 
@@ -177,7 +179,7 @@ Full pipeline:
 3. Load available templates & modules from disk
 4. Spinner → call `planner()` → `StackDecision`
 5. Present recommendation to user (template, modules, reasoning)
-6. `confirm()` — "Proceed with this stack?" (human approval gate)
+6. `confirm()` — "Proceed with this stack?" (human approval gate). If "No", exit gracefully with `clack.outro("No problem — run create-stack again to start over.")`. v1 does not support editing the recommendation inline; the user reruns the CLI.
 7. Spinner → scaffold template
 8. Spinner → apply each module
 9. Spinner → install dependencies

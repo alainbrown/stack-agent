@@ -85,6 +85,7 @@ After user approves the plan, a second agent loop runs with a scaffold-focused s
 3. Claude calls run_scaffold (base), then add_integration (each layer)
 4. For each tool_use → execute → append tool_result → continue
 5. When Claude stops calling tools → scaffold complete
+6. Safety: max 30 tool calls per scaffold loop. If exceeded, exit with error.
 ```
 
 The `max_tokens` for the conversation loop is 4096 (sufficient for explanations and option presentation). The scaffold loop uses 16384 (Claude generates complete integration files which can be large).
@@ -150,8 +151,8 @@ Progress is updated when Claude calls `set_decision`. It's injected into the sys
 
 | Tool | Input Schema | Purpose |
 |------|-------------|---------|
-| `run_scaffold` | `{ tool: string, args: string[] }` | Execute an official scaffold CLI command (e.g., `create-next-app`) |
-| `add_integration` | `{ files: Record<string, string>, dependencies?: Record<string, string>, devDependencies?: Record<string, string>, envVars?: string[] }` | Write files (keys = dest paths relative to project root, values = file contents), install deps, append env vars to `.env.example` |
+| `run_scaffold` | `{ tool: string, args: string[] }` | Execute an official scaffold CLI command. **Validation:** The executor checks that `tool` exactly matches the `scaffoldTool` from the approved plan. Any deviation is rejected without execution. Additionally, only allowlisted tools are permitted: `create-next-app`, `create-vite`, `create-remix`, `create-svelte`, `create-astro`, `nuxi`. |
+| `add_integration` | `{ files: Record<string, string>, dependencies?: Record<string, string>, devDependencies?: Record<string, string>, envVars?: string[] }` | Write files (keys = dest paths relative to project root, values = file contents), install deps, append env vars to `.env.example`. **Validation:** File paths are normalized and validated to resolve within the project root. Any path that traverses above the project root (e.g., via `../`) is rejected with an error. |
 
 **MCP tools** (available in both phases): Context7 and other MCP server tools are discovered automatically via the Anthropic API's MCP connector. They appear as `mcp_tool_use` blocks alongside local tools.
 

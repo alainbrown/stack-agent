@@ -161,12 +161,12 @@ Module metadata format:
     "lib/auth.ts": "files/auth.ts",
     "middleware.ts": "files/middleware.ts"
   }
-  // Keys = destination paths (relative to scaffolded project root)
-  // Values = source paths (relative to the module directory)
 }
 ```
 
-**`deps.ts`** — Dependency installation:
+In the `files` map, keys are destination paths (relative to the scaffolded project root) and values are source paths (relative to the module directory).
+
+**`deps.ts`** — Dependency installation. Receives the scaffolded project path as its only argument.
 1. Detects package manager by checking the **user's cwd** (not the scaffolded project) for lockfiles: `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, `bun.lockb` → bun, otherwise defaults to `npm`. The scaffolded project is new and has no lockfiles, so detection is based on the user's existing environment.
 2. Runs install in scaffolded project
 3. Streams output with clack spinner

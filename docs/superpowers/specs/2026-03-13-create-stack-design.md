@@ -20,6 +20,8 @@ Core principle: **LLM decides what, system decides how.**
 | Scaffolding strategy | File copy + simple token replacement | Predictable, no templating engine overhead |
 | Architecture | Linear pipeline with single retry on validation failure | Simple, debuggable, matches deterministic execution principle |
 | Model | `claude-sonnet-4-6` | Fast, cheap, sufficient for constrained JSON selection |
+| Stack Graph | Omitted for v1; replaced by `compatibleModules` validation | One template + one module doesn't need a graph layer; validation guard prevents invalid combos |
+| LLM error recovery | Deferred to v2 | v1 scope is narrow enough that deterministic error messages suffice; LLM-assisted recovery adds complexity without proportional value yet |
 
 ## Architecture
 
@@ -78,9 +80,10 @@ interface UserRequirements {
   frontend: 'nextjs' | 'react-spa' | 'none'
   needsAuth: boolean
   needsPayments: boolean
-  outputDir: string
 }
 ```
+
+Output directory is always `./<projectName>` relative to cwd. It is not prompted — it is derived from `projectName`.
 
 Prompt flow:
 1. `text()` — Project name (validated as valid npm package name)
@@ -98,29 +101,36 @@ Ctrl+C at any prompt exits cleanly with "Setup cancelled."
 
 ```typescript
 interface StackDecision {
-  template: string
-  modules: string[]
-  reasoning: string
-  envVars: string[]
+  frontend: string           // e.g. "nextjs"
+  backend: string            // e.g. "node"
+  database: string           // e.g. "postgres"
+  auth: string               // e.g. "supabase"
+  deployment: string         // e.g. "vercel"
+  template: string           // resolved template name, e.g. "nextjs-basic"
+  modules: string[]          // resolved module names, e.g. ["auth-supabase"]
+  reasoning: string          // why this stack was chosen (shown to user)
 }
 ```
+
+The schema preserves the original spec's architectural fields (`frontend`, `backend`, `database`, `auth`, `deployment`) so the LLM expresses intent, not just file paths. The `template` and `modules` fields map that intent to concrete templates/modules. Environment variables are derived from `module.json` — the LLM does not redundantly declare them.
 
 **`client.ts`** — Reads `ANTHROPIC_API_KEY` from env. Exposes `callClaude(systemPrompt, userMessage)`. Exits with clear error if key is missing.
 
 **`planner.ts`**:
 1. Takes `UserRequirements` + available templates/modules (read from disk)
 2. Builds system prompt: "You are a software architect. Choose from available templates and modules. Return JSON matching this schema."
-3. Includes each `template.json` and `module.json` in the prompt so the LLM only picks from what exists
+3. Includes each `template.json` and `module.json` in the prompt so the LLM only picks from what exists. (Note: this full-metadata injection is a v1 simplification. At scale with many templates/modules, this will need to be replaced with a summarization or pre-filtering step.)
 4. Validates response against Zod schema
-5. On validation failure: retries once with error appended
-6. On second failure: exits with error
+5. **Validates `StackDecision.modules` against the selected template's `compatibleModules` list.** If a module is not compatible, the validation fails and triggers the retry.
+6. On validation failure: retries once with error appended
+7. On second failure: exits with error
 
 ### Execution Engine (`src/engine/`)
 
 **`scaffold.ts`** — Template scaffolding:
 1. Reads `template.json` from selected template
 2. Recursively copies template to output directory
-3. Runs `string.replaceAll()` for each token (`__PROJECT_NAME__` → actual value)
+3. Runs `string.replaceAll()` for each token (`__PROJECT_NAME__` → actual value). **Token validation:** after replacement, warns if any `__UNRESOLVED_TOKEN__` patterns remain in output files (detected via regex). This catches tokens declared in files but missing from `template.json` or `UserRequirements`.
 4. Skips `template.json` (metadata only)
 
 Template metadata format:
@@ -135,7 +145,7 @@ Template metadata format:
 
 **`modules.ts`** — Module application:
 1. Reads `module.json` from selected module
-2. Copies files into scaffolded project at specified paths
+2. Copies files into scaffolded project at specified paths. **Module files always overwrite template files** — templates should be designed to not conflict, but if they do, the module wins. This is intentional: modules are specializations applied on top of the base template.
 3. Merges dependencies into `package.json`
 4. Appends env vars to `.env.example`
 
@@ -154,7 +164,7 @@ Module metadata format:
 ```
 
 **`deps.ts`** — Dependency installation:
-1. Detects package manager (`pnpm` → `yarn` → `npm`)
+1. Detects package manager by checking the **user's cwd** (not the scaffolded project) for lockfiles: `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, `bun.lockb` → bun, otherwise defaults to `npm`. The scaffolded project is new and has no lockfiles, so detection is based on the user's existing environment.
 2. Runs install in scaffolded project
 3. Streams output with clack spinner
 
@@ -198,3 +208,5 @@ Enables both `npx create-stack` and global install.
 - Template distribution can be swapped to remote fetching by changing resolution in `scaffold.ts`
 - LLM provider can be abstracted behind the `client.ts` interface
 - Multi-stage planning (Approach C) if single-call struggles with complex decisions
+- Prompt construction will need summarization/pre-filtering when template/module count grows beyond what fits comfortably in context
+- LLM-assisted error recovery (deferred from v1) for handling dependency conflicts and scaffolding failures

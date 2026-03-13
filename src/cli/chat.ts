@@ -1,0 +1,46 @@
+import * as p from '@clack/prompts'
+
+export function intro(): void {
+  p.intro('create-stack')
+}
+
+export function outro(message: string): void {
+  p.outro(message)
+}
+
+export function renderAgentMessage(text: string): void {
+  p.log.message(text)
+}
+
+export function renderError(text: string): void {
+  p.log.error(text)
+}
+
+export function renderWarning(text: string): void {
+  p.log.warn(text)
+}
+
+export function renderStep(text: string): void {
+  p.log.step(text)
+}
+
+export function renderPlan(plan: string): void {
+  p.log.info(plan)
+}
+
+export async function getUserInput(placeholder?: string): Promise<string | null> {
+  const result = await p.text({
+    message: '',
+    placeholder: placeholder ?? 'Type your message...',
+  })
+
+  if (p.isCancel(result)) {
+    return null
+  }
+
+  return result as string
+}
+
+export function createSpinner() {
+  return p.spinner()
+}

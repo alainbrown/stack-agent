@@ -1,6 +1,0 @@
-{
-  "name": "nextjs-basic",
-  "description": "Basic Next.js application with App Router",
-  "tokens": ["PROJECT_NAME", "DESCRIPTION"],
-  "compatibleModules": ["auth-supabase"]
-}

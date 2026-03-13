@@ -1,12 +1,13 @@
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
 
 const lockfiles: [string, PackageManager][] = [
   ['pnpm-lock.yaml', 'pnpm'],
   ['yarn.lock', 'yarn'],
+  ['bun.lock', 'bun'],
   ['bun.lockb', 'bun'],
 ]
 
@@ -32,7 +33,7 @@ export async function detectPackageManager(
 
 export async function installDependencies(projectDir: string): Promise<void> {
   const pm = await detectPackageManager(process.cwd())
-  execSync(`${pm} install`, {
+  execFileSync(pm, ['install'], {
     cwd: projectDir,
     stdio: 'inherit',
   })

@@ -25,7 +25,12 @@ describe('detectPackageManager', () => {
     expect(await detectPackageManager(dir)).toBe('yarn')
   })
 
-  it('detects bun from bun.lockb', async () => {
+  it('detects bun from bun.lock', async () => {
+    await writeFile(join(dir, 'bun.lock'), '')
+    expect(await detectPackageManager(dir)).toBe('bun')
+  })
+
+  it('detects bun from legacy bun.lockb', async () => {
     await writeFile(join(dir, 'bun.lockb'), '')
     expect(await detectPackageManager(dir)).toBe('bun')
   })

@@ -131,6 +131,7 @@ ${decision.reasoning}`)
       'Failed to install dependencies. You can install them manually:\n' +
       `  cd ${requirements.projectName}\n  npm install`
     )
+    process.exit(1)
   }
 
   // Collect env vars from applied modules

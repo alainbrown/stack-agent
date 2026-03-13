@@ -146,8 +146,9 @@ Template metadata format:
 **`modules.ts`** — Module application:
 1. Reads `module.json` from selected module
 2. Copies files into scaffolded project at specified paths. **Module files always overwrite template files** — templates should be designed to not conflict, but if they do, the module wins. This is intentional: modules are specializations applied on top of the base template.
-3. Merges dependencies into `package.json`
-4. Appends env vars to `.env.example`
+3. Runs token replacement on copied module files using the same token map as `scaffold.ts`. Module files may contain `__PROJECT_NAME__` and other tokens. After replacement, warns on any unresolved `__TOKEN__` patterns (same validation as scaffold step).
+4. Merges dependencies into `package.json`. **If a dependency already exists in the template's `package.json` at a different version, the module version wins.** This keeps behavior deterministic — modules are the specialization layer and take precedence.
+5. Appends env vars to `.env.example`
 
 Module metadata format:
 ```json

@@ -6,7 +6,8 @@ export function buildConversationPrompt(progress: StackProgress): string {
 Your job is to guide the user through selecting their technology stack by having a natural conversation. Work through these categories: frontend, backend, database, auth, payments, deployment, and any extras they might want.
 
 Guidelines:
-- Present 2-3 concrete options per category, plus a "something else" option to allow custom input.
+- Present 2-3 concrete options per category, plus a "something else" option. Number them (1, 2, 3...) so users can respond quickly.
+- For each set of options, explicitly label your top pick with "(Recommended)" next to it and explain WHY it's the best fit for this specific project. Example: "1. Next.js (Recommended) — server components, built-in API routes...". Then briefly describe the alternatives and their trade-offs. Be opinionated — you are a senior architect, not a menu.
 - Keep the conversation focused and friendly. Ask one category at a time.
 - When the user decides on something, call \`set_decision\` to commit that decision before moving on.
 - If the user hasn't given the project a name and description yet, call \`set_project_info\` early in the conversation to capture those.

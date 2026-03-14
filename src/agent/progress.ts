@@ -13,6 +13,7 @@ export interface StackProgress {
   database: ComponentChoice | null
   auth: ComponentChoice | null
   payments: ComponentChoice | null
+  ai: ComponentChoice | null
   deployment: ComponentChoice | null
   extras: ComponentChoice[]
 }
@@ -23,6 +24,7 @@ export type ProgressCategory =
   | 'database'
   | 'auth'
   | 'payments'
+  | 'ai'
   | 'deployment'
   | 'extras'
 
@@ -35,6 +37,7 @@ export function createProgress(): StackProgress {
     database: null,
     auth: null,
     payments: null,
+    ai: null,
     deployment: null,
     extras: [],
   }
@@ -85,6 +88,7 @@ export function serializeProgress(progress: StackProgress): string {
     `Database: ${formatChoice(progress.database)}`,
     `Auth: ${formatChoice(progress.auth)}`,
     `Payments: ${formatChoice(progress.payments)}`,
+    `AI/LLM: ${formatChoice(progress.ai)}`,
     `Deployment: ${formatChoice(progress.deployment)}`,
     `Extras: ${progress.extras.length > 0 ? progress.extras.map((e) => e.component).join(', ') : 'not yet decided'}`,
   ]

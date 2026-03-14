@@ -23,7 +23,7 @@ export function conversationToolDefinitions(): Tool[] {
         properties: {
           category: {
             type: 'string',
-            enum: ['frontend', 'backend', 'database', 'auth', 'payments', 'deployment', 'extras'],
+            enum: ['frontend', 'backend', 'database', 'auth', 'payments', 'ai', 'deployment', 'extras'],
             description: 'The stack category being decided.',
           },
           component: {

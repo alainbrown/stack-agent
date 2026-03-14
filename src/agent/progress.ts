@@ -1,3 +1,6 @@
+import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
+import type { StageEntry } from './stages.js'
+
 export interface ComponentChoice {
   component: string
   reasoning: string
@@ -64,6 +67,10 @@ export function clearDecision(
   return { ...progress, [category]: null }
 }
 
+export function clearProjectInfo(progress: StackProgress): StackProgress {
+  return { ...progress, projectName: null, description: null }
+}
+
 export function isComplete(progress: StackProgress): boolean {
   return (
     progress.projectName !== null &&
@@ -93,4 +100,28 @@ export function serializeProgress(progress: StackProgress): string {
     `Extras: ${progress.extras.length > 0 ? progress.extras.map((e) => e.component).join(', ') : 'not yet decided'}`,
   ]
   return lines.join('\n')
+}
+
+export interface SavedSession {
+  version: 1
+  createdAt: string
+  updatedAt: string
+  progress: StackProgress
+  stages: StageEntry[]
+  messages: MessageParam[]
+}
+
+export function serializeSession(session: SavedSession): string {
+  return JSON.stringify(session, null, 2)
+}
+
+export function deserializeSession(json: string): SavedSession | null {
+  try {
+    const data = JSON.parse(json)
+    if (data.version !== 1) return null
+    if (!data.progress || !Array.isArray(data.stages) || !Array.isArray(data.messages)) return null
+    return data as SavedSession
+  } catch {
+    return null
+  }
 }

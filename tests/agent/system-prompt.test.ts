@@ -92,4 +92,23 @@ describe('buildScaffoldPrompt', () => {
     expect(prompt.toLowerCase()).toMatch(/complete|working|production/)
     expect(prompt.toLowerCase()).toMatch(/no stubs|no.*placeholder|production-ready/)
   })
+
+  it('instructs Claude to generate deploy.sh', () => {
+    const prompt = buildScaffoldPrompt(makeFullProgress())
+    expect(prompt).toContain('deploy.sh')
+    expect(prompt).toContain('set -euo pipefail')
+  })
+
+  it('instructs Claude to generate README.md', () => {
+    const prompt = buildScaffoldPrompt(makeFullProgress())
+    expect(prompt).toContain('README.md')
+    expect(prompt).toContain('Environment variables')
+    expect(prompt).toContain('.env')
+  })
+
+  it('instructs Claude to use scripts property for npm run deploy', () => {
+    const prompt = buildScaffoldPrompt(makeFullProgress())
+    expect(prompt).toContain('scripts')
+    expect(prompt).toContain('npm run deploy')
+  })
 })

@@ -5,6 +5,7 @@ export interface IntegrationInput {
   files: Record<string, string>
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
+  scripts?: Record<string, string>
   envVars?: string[]
 }
 
@@ -22,7 +23,7 @@ export function validateFilePaths(projectRoot: string, files: Record<string, str
 }
 
 export function writeIntegration(projectDir: string, input: IntegrationInput): void {
-  const { files, dependencies, devDependencies, envVars } = input
+  const { files, dependencies, devDependencies, scripts, envVars } = input
 
   // 1. Validate file paths
   validateFilePaths(projectDir, files)
@@ -35,7 +36,7 @@ export function writeIntegration(projectDir: string, input: IntegrationInput): v
   }
 
   // 3. Merge dependencies into package.json if provided
-  if (dependencies !== undefined || devDependencies !== undefined) {
+  if (dependencies !== undefined || devDependencies !== undefined || scripts !== undefined) {
     const pkgPath = resolve(projectDir, 'package.json')
     let pkg: Record<string, unknown> = {}
     if (existsSync(pkgPath)) {
@@ -53,6 +54,13 @@ export function writeIntegration(projectDir: string, input: IntegrationInput): v
       pkg.devDependencies = {
         ...(pkg.devDependencies as Record<string, string> | undefined),
         ...devDependencies,
+      }
+    }
+
+    if (scripts !== undefined) {
+      pkg.scripts = {
+        ...(pkg.scripts as Record<string, string> | undefined),
+        ...scripts,
       }
     }
 

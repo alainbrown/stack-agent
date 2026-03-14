@@ -31,6 +31,26 @@ Instructions:
 2. After scaffolding, call \`add_integration\` for each integration (database, auth, payments, deployment config, extras) to write necessary files, install dependencies, and declare required environment variables.
 3. Use MCP tools to look up current documentation for any libraries or frameworks you integrate, ensuring you use up-to-date APIs and configuration patterns.
 4. Generate complete, working code — no stubs, no placeholders, no TODO comments. Every file should be production-ready.
+5. Generate a \`deploy.sh\` script at the project root via \`add_integration\`. The script must:
+   - Start with \`set -euo pipefail\`
+   - Check that the required CLI tool is installed (exit 1 with a helpful message if not)
+   - Check authentication status (exit 1 with auth instructions if not)
+   - Print what it is about to do
+   - Execute the deploy command for the chosen platform
+   - Be 15-30 lines max — no elaborate bash framework
+   Use the \`scripts\` property of \`add_integration\` to add \`"deploy": "bash deploy.sh"\` to package.json.
+6. As the LAST \`add_integration\` call, generate a comprehensive \`README.md\` with these sections:
+   - **Project title and description**
+   - **Tech stack overview** — what was chosen and why
+   - **Prerequisites** — Node.js version, required CLI tools
+   - **Local development setup** — clone, \`npm install\`, configure \`.env\` from \`.env.example\`, \`npm run dev\`
+   - **Environment variables** — table with: variable name, what it is for, where to get it, required vs optional. Clearly state that \`.env\` is for local development only.
+   - **Deployment** — platform-specific instructions:
+     - How to install and authenticate the platform CLI
+     - How to set env vars ON THE PLATFORM (e.g. \`vercel env add\`, \`gcloud run services update --set-env-vars\`, AWS Parameter Store). Production env vars are NOT set via \`.env\` — they are configured through platform-native tools.
+     - The deploy command: \`npm run deploy\`
+     - Post-deploy verification steps
+   - **Project structure** — brief description of key directories and files
 
 Do not ask for confirmation. Proceed through all steps automatically.`
 }

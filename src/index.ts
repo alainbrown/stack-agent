@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts'
-import { intro, outro, renderError } from './cli/chat.js'
+import { intro, outro, renderError, renderPostScaffold } from './cli/chat.js'
+import { checkDeployReadiness } from './deploy/readiness.js'
 import { runConversationLoop, runScaffoldLoop } from './agent/loop.js'
 
 async function main() {
@@ -27,11 +28,10 @@ async function main() {
   const success = await runScaffoldLoop(progress)
 
   if (success) {
-    const nextSteps = [`cd ${progress.projectName}`]
-    nextSteps.push('cp .env.example .env  # fill in your values')
-    nextSteps.push('npm run dev')
-
-    p.log.step('Next steps:\n  ' + nextSteps.join('\n  '))
+    const readiness = progress.deployment
+      ? checkDeployReadiness(progress.deployment.component)
+      : null
+    renderPostScaffold(progress.projectName!, readiness)
     outro('Happy building!')
   } else {
     renderError('Scaffolding encountered errors. Check the output above.')

@@ -137,6 +137,11 @@ export function scaffoldToolDefinitions(): Tool[] {
             additionalProperties: { type: 'string' },
             description: 'Map of package names to versions to install as dev dependencies.',
           },
+          scripts: {
+            type: 'object',
+            additionalProperties: { type: 'string' },
+            description: 'Map of script names to commands to merge into package.json scripts.',
+          },
           envVars: {
             type: 'array',
             items: { type: 'string' },

@@ -163,9 +163,13 @@ describe('runConversationLoop', () => {
   })
 
   it('multi-tool turn: pushes ONE assistant message and ONE user message', async () => {
+    // Initial response: Claude asks for project name
+    mockStreamResponse({
+      content: [{ type: 'text', text: 'What is your project name?' }],
+    })
     mockGetUserInput.mockResolvedValueOnce('Build me an app')
 
-    // Claude returns two set_decision calls in one response
+    // Claude returns two set_decision calls + present_plan in one response
     mockStreamResponse({
       content: [
         {
@@ -180,47 +184,55 @@ describe('runConversationLoop', () => {
           name: 'set_decision',
           input: { category: 'database', component: 'MongoDB', reasoning: 'Flexible' },
         },
+        {
+          type: 'tool_use',
+          id: 'tool_3',
+          name: 'present_plan',
+          input: {},
+        },
       ],
     })
 
-    // Next: Claude responds with text
-    mockStreamResponse({
-      content: [{ type: 'text', text: 'Great choices! What about deployment?' }],
-    })
+    const result = await runConversationLoop()
 
-    // User cancels to end the loop
-    mockGetUserInput.mockResolvedValueOnce(null)
+    // Verify the result has both decisions
+    expect(result).not.toBeNull()
+    expect(result!.frontend!.component).toBe('React')
+    expect(result!.database!.component).toBe('MongoDB')
 
-    await runConversationLoop()
+    // Inspect the messages sent in the last chatStream call
+    const lastCallIdx = mockChatStream.mock.calls.length - 1
+    const msgs = mockChatStream.mock.calls[lastCallIdx][0].messages
 
-    // Check the second call to chatStream to inspect messages
-    expect(mockChatStream).toHaveBeenCalledTimes(2)
-    const secondCallArgs = mockChatStream.mock.calls[1][0]
-    const msgs = secondCallArgs.messages
+    // Find the assistant message with tool_use blocks
+    const toolAssistantMsg = msgs.find(
+      (m: any) => m.role === 'assistant' && Array.isArray(m.content) &&
+        m.content.some((b: any) => b.type === 'tool_use')
+    )
+    // Find the user message with tool_result blocks
+    const toolResultMsg = msgs.find(
+      (m: any) => m.role === 'user' && Array.isArray(m.content) &&
+        m.content.some((b: any) => b.type === 'tool_result')
+    )
 
-    // Messages should be:
-    // [0] user: initial input
-    // [1] assistant: { content: [tool_use, tool_use] } (ONE assistant message)
-    // [2] user: { content: [tool_result, tool_result] } (ONE user message)
-    expect(msgs).toHaveLength(3)
-    expect(msgs[0].role).toBe('user')
-    expect(msgs[1].role).toBe('assistant')
-    expect(msgs[2].role).toBe('user')
+    // All 3 tool_use blocks should be in ONE assistant message
+    expect(toolAssistantMsg).toBeDefined()
+    const assistantContent = toolAssistantMsg!.content as any[]
+    const toolUseCount = assistantContent.filter((b: any) => b.type === 'tool_use').length
+    expect(toolUseCount).toBe(3)
 
-    // The assistant message contains both tool_use blocks
-    const assistantContent = msgs[1].content as object[]
-    expect(assistantContent).toHaveLength(2)
-    expect((assistantContent[0] as any).type).toBe('tool_use')
-    expect((assistantContent[1] as any).type).toBe('tool_use')
-
-    // The user message contains both tool_result blocks
-    const userContent = msgs[2].content as object[]
-    expect(userContent).toHaveLength(2)
-    expect((userContent[0] as any).type).toBe('tool_result')
-    expect((userContent[1] as any).type).toBe('tool_result')
+    // All 3 tool_result blocks should be in ONE user message
+    expect(toolResultMsg).toBeDefined()
+    const userContent = toolResultMsg!.content as any[]
+    const toolResultCount = userContent.filter((b: any) => b.type === 'tool_result').length
+    expect(toolResultCount).toBe(3)
   })
 
   it('handles summarize_stage by replacing earlier messages with summary', async () => {
+    // Initial response: Claude asks for project name
+    mockStreamResponse({
+      content: [{ type: 'text', text: 'What is your project name?' }],
+    })
     mockGetUserInput.mockResolvedValueOnce('Build me an app')
 
     // First response: text
@@ -258,17 +270,17 @@ describe('runConversationLoop', () => {
 
     await runConversationLoop()
 
-    // Check the third call to chatStream — messages should have been replaced
-    expect(mockChatStream).toHaveBeenCalledTimes(3)
-    const thirdCallArgs = mockChatStream.mock.calls[2][0]
-    const msgs = thirdCallArgs.messages
+    // After summarize_stage, find the call where messages were replaced
+    // The call after summarize should have the summary as the first message
+    const allCalls = mockChatStream.mock.calls
+    const callAfterSummarize = allCalls.find((call: any) => {
+      const msgs = call[0].messages
+      return msgs.length > 0 && msgs[0].role === 'assistant' &&
+        msgs[0].content === 'User chose React for the frontend.'
+    })
 
-    // After summarize_stage, the messages are replaced with:
-    // [0] assistant: summary text
-    // [1] user: "[Continuing]"
-    // [2] assistant: (the tool call message)
-    // [3] user: (tool results)
-    expect(msgs).toHaveLength(4)
+    expect(callAfterSummarize).toBeDefined()
+    const msgs = callAfterSummarize![0].messages
     expect(msgs[0].role).toBe('assistant')
     expect(msgs[0].content).toBe('User chose React for the frontend.')
     expect(msgs[1].role).toBe('user')

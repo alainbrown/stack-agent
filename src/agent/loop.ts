@@ -38,11 +38,8 @@ export async function runConversationLoop(
   let progress = createProgress()
   const messages: Message[] = []
 
-  // Get initial user input
-  const initialInput = await getUserInput('What are you building?', 'A SaaS platform for...')
-  if (initialInput === null) return null
-
-  messages.push({ role: 'user', content: initialInput })
+  // Kick off the conversation — Claude will ask for project name first
+  messages.push({ role: 'user', content: 'I want to start a new project.' })
 
   while (true) {
     const system = buildConversationPrompt(progress)

@@ -171,4 +171,39 @@ describe('writeIntegration', () => {
       }),
     ).toThrow(/relative/i)
   })
+
+  it('merges scripts into package.json', () => {
+    const pkgPath = join(projectDir, 'package.json')
+    writeFileSync(
+      pkgPath,
+      JSON.stringify({ name: 'test-app', scripts: { dev: 'next dev' } }, null, 2),
+      'utf8',
+    )
+
+    writeIntegration(projectDir, {
+      files: {},
+      scripts: { deploy: 'bash deploy.sh' },
+    })
+
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    expect(pkg.scripts['dev']).toBe('next dev')
+    expect(pkg.scripts['deploy']).toBe('bash deploy.sh')
+  })
+
+  it('writes scripts to package.json even when no dependencies are provided', () => {
+    const pkgPath = join(projectDir, 'package.json')
+    writeFileSync(pkgPath, JSON.stringify({ name: 'test-app' }, null, 2), 'utf8')
+
+    writeIntegration(projectDir, {
+      files: {},
+      scripts: { deploy: 'bash deploy.sh' },
+    })
+
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    expect(pkg.scripts['deploy']).toBe('bash deploy.sh')
+  })
 })

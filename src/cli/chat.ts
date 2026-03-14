@@ -1,8 +1,8 @@
 import * as p from '@clack/prompts'
 import { Marked } from 'marked'
-import TerminalRenderer from 'marked-terminal'
+import { markedTerminal } from 'marked-terminal'
 
-const marked = new Marked(TerminalRenderer())
+const marked = new Marked(markedTerminal())
 
 function renderMarkdown(text: string): string {
   return (marked.parse(text) as string).trimEnd()

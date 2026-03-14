@@ -264,6 +264,9 @@ export async function runScaffoldLoop(
             devDependencies: toolBlock.input.devDependencies as
               | Record<string, string>
               | undefined,
+            scripts: toolBlock.input.scripts as
+              | Record<string, string>
+              | undefined,
             envVars: toolBlock.input.envVars as string[] | undefined,
           })
 

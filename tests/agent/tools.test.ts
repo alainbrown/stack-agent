@@ -61,6 +61,13 @@ describe('scaffoldToolDefinitions', () => {
       expect(tool.input_schema.type).toBe('object')
     }
   })
+
+  it('add_integration schema includes scripts property', () => {
+    const tools = scaffoldToolDefinitions()
+    const addIntegration = tools.find((t) => t.name === 'add_integration')!
+    const properties = addIntegration.input_schema.properties as Record<string, unknown>
+    expect(properties).toHaveProperty('scripts')
+  })
 })
 
 describe('executeConversationTool', () => {

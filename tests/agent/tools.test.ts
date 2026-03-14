@@ -7,13 +7,14 @@ import {
 import { createProgress } from '../../src/agent/progress.js'
 
 describe('conversationToolDefinitions', () => {
-  it('returns all 3 tool names', () => {
+  it('returns all 4 tool names', () => {
     const tools = conversationToolDefinitions()
     const names = tools.map((t) => t.name)
     expect(names).toContain('set_decision')
     expect(names).toContain('set_project_info')
     expect(names).toContain('summarize_stage')
-    expect(names).toHaveLength(3)
+    expect(names).toContain('present_options')
+    expect(names).toHaveLength(4)
   })
 
   it('all tools have valid input_schema with type object', () => {
@@ -169,6 +170,19 @@ describe('executeConversationTool', () => {
         messages,
       )
       expect(result.response).toBe('We chose React for the frontend.')
+      expect(result.progress).toBe(progress)
+    })
+  })
+
+  describe('present_options', () => {
+    it('is included in conversation tool definitions', () => {
+      const tools = conversationToolDefinitions()
+      expect(tools.map(t => t.name)).toContain('present_options')
+    })
+    it('returns fallback response from executeConversationTool', () => {
+      const progress = createProgress()
+      const result = executeConversationTool('present_options', { options: [] }, progress, messages)
+      expect(result.response).toBe('Options presented to user.')
       expect(result.progress).toBe(progress)
     })
   })

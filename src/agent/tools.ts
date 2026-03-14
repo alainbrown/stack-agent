@@ -82,6 +82,30 @@ export function conversationToolDefinitions(): Tool[] {
         required: ['category', 'summary'],
       },
     },
+    {
+      name: 'present_options',
+      description: 'Presents technology options for the user to choose from. The UI renders these as selectable items.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          options: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string', description: 'Short name of the option (max 30 chars).' },
+                description: { type: 'string', description: 'One-line description (max 80 chars).' },
+                recommended: { type: 'boolean', description: 'Whether this is recommended. At most one true.' },
+              },
+              required: ['label', 'description'],
+            },
+            minItems: 2,
+            maxItems: 3,
+          },
+        },
+        required: ['options'],
+      },
+    },
   ]
 }
 
@@ -182,6 +206,10 @@ export function executeConversationTool(
       progress,
       response: input.summary as string,
     }
+  }
+
+  if (name === 'present_options') {
+    return { progress, response: 'Options presented to user.' }
   }
 
   return {

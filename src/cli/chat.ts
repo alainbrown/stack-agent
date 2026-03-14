@@ -2,6 +2,7 @@ import * as p from '@clack/prompts'
 import { Marked } from 'marked'
 import { markedTerminal } from 'marked-terminal'
 
+// @ts-expect-error — marked-terminal types lag behind marked major versions
 const marked = new Marked(markedTerminal())
 
 function renderMarkdown(text: string): string {

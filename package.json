@@ -30,7 +30,7 @@
     "dist"
   ],
   "bin": {
-    "stack-agent": "./dist/index.js"
+    "stack-agent": "dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",

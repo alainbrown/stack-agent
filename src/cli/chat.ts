@@ -9,7 +9,7 @@ function renderMarkdown(text: string): string {
 }
 
 export function intro(): void {
-  p.intro('create-stack')
+  p.intro('stack-agent')
 }
 
 export function outro(message: string): void {

@@ -1,9 +1,9 @@
 {
-  "name": "create-stack",
+  "name": "stack-agent",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "create-stack": "./dist/index.js"
+    "stack-agent": "./dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",

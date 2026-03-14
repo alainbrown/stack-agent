@@ -84,6 +84,11 @@ async function main() {
   const cwd = process.cwd()
   const invalidationFn = createInvalidationFn()
 
+  // Handle SIGINT gracefully — atomic save handles mid-write safety
+  process.on('SIGINT', () => {
+    process.exit(0)
+  })
+
   // Check for existing session
   let manager: StageManager
   const existingSession = StageManager.detect(cwd)

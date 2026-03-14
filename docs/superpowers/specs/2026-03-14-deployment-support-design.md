@@ -74,7 +74,13 @@ scripts: {
 
 **Changes to `src/scaffold/integrate.ts`:**
 
-Add `scripts?: Record<string, string>` to the `IntegrationInput` interface. In `writeIntegration`, merge scripts into `package.json` the same way dependencies are merged:
+Add `scripts?: Record<string, string>` to the `IntegrationInput` interface. The guard condition for the package.json read/write block must be expanded to include `scripts`:
+
+```typescript
+if (dependencies !== undefined || devDependencies !== undefined || scripts !== undefined) {
+```
+
+Then merge scripts into `package.json` the same way dependencies are merged:
 
 ```typescript
 if (scripts !== undefined) {
@@ -85,9 +91,21 @@ if (scripts !== undefined) {
 }
 ```
 
+Without this guard expansion, an `add_integration` call with only `files` and `scripts` (no dependencies) — which is exactly the deploy script use case — would silently skip the package.json update.
+
 **Changes to `src/agent/loop.ts`:**
 
-Pass `scripts` from the tool input through to `writeIntegration`, same pattern as `dependencies` and `devDependencies`.
+Pass `scripts` from the tool input through to `writeIntegration`. In the `add_integration` handler (around line 259), add `scripts` to the object passed to `writeIntegration`:
+
+```typescript
+writeIntegration(projectDir, {
+  files: (toolBlock.input.files as Record<string, string>) ?? {},
+  dependencies: toolBlock.input.dependencies as Record<string, string> | undefined,
+  devDependencies: toolBlock.input.devDependencies as Record<string, string> | undefined,
+  scripts: toolBlock.input.scripts as Record<string, string> | undefined,
+  envVars: toolBlock.input.envVars as string[] | undefined,
+})
+```
 
 This is a small, consistent extension of the existing pattern — not a new tool.
 
@@ -141,11 +159,12 @@ The `buildScaffoldPrompt` gets updated to instruct Claude to generate:
 - **Fly.io:** `fly deploy`
 
 The script must:
-1. Check that the required CLI tool is installed (exit with a helpful message if not)
-2. Check authentication status
-3. Print what it's about to do
-4. Execute the deploy command
-5. Be simple — no elaborate bash framework
+1. Start with `set -euo pipefail` to prevent silent failures
+2. Check that the required CLI tool is installed (exit 1 with a helpful message if not)
+3. Check authentication status (exit 1 with auth instructions if not)
+4. Print what it's about to do
+5. Execute the deploy command
+6. Be simple — no elaborate bash framework
 
 **`package.json` addition:**
 
@@ -202,8 +221,13 @@ export function checkDeployReadiness(
 
 **Behavior:**
 
-- Uses `execFileSync` with `{ stdio: 'pipe', timeout: 5000 }` to check CLI presence and auth. A timeout is treated as `authenticated: null` (indeterminate), never as an error.
-- Catches all errors gracefully — a failed check means "not ready", never crashes the agent
+- Uses `execFileSync` with `{ stdio: 'pipe', timeout: 5000 }` for both CLI presence and auth checks
+- Error handling by error type:
+  - **ENOENT** (binary not found): `cliInstalled: false`, `authenticated: null`
+  - **Non-zero exit** (binary exists but auth failed): `cliInstalled: true`, `authenticated: false`
+  - **Timeout** (command hung): `cliInstalled: true`, `authenticated: null` (indeterminate)
+  - **Other errors**: `cliInstalled: true`, `authenticated: null`
+- Never crashes the agent — all `execFileSync` calls are wrapped in try/catch
 - Pure detection: never modifies system state, never writes files, never deploys
 - Returns a structured result that the terminal output renderer consumes
 
@@ -219,7 +243,7 @@ export function checkDeployReadiness(
    - Contains `"gcp"` or `"google cloud"` or `"cloud run"` → GCP
    - Contains `"docker"` or `"container"` → Docker
    - Contains `"railway"` → Railway
-   - Contains `"fly"` or `"fly.io"` → Fly.io
+   - Contains `"fly.io"` or equals `"fly"` or starts with `"fly "` → Fly.io
 3. No match → return a fallback result with `cliInstalled: false`, `authenticated: null`, and a message pointing users to the README for deployment instructions
 
 This keyword-based approach is simple and handles the common variations Claude might produce during conversation.
@@ -317,9 +341,26 @@ Uses existing `@clack/prompts` helpers (`p.log.step`, `p.log.info`, `p.log.warn`
 | `src/agent/system-prompt.ts` | Update `buildScaffoldPrompt` — add README and deploy.sh generation instructions |
 | `src/deploy/readiness.ts` | **New file** — deploy readiness check (~100-120 lines) |
 | `src/cli/chat.ts` | Add `renderPostScaffold` function (~30-40 lines) |
-| `src/index.ts` | Replace hardcoded next steps with readiness check + enhanced output (~10 lines) |
-| `tests/deploy/readiness.test.ts` | **New file** — tests for readiness check and platform normalization |
+| `src/index.ts` | Replace hardcoded next steps with readiness check + enhanced output; add imports for `checkDeployReadiness` and `renderPostScaffold` (~10 lines) |
+| `tests/deploy/readiness.test.ts` | **New file** — tests for readiness check and platform normalization (see key test cases below) |
 | `tests/scaffold/integrate.test.ts` | Add tests for `scripts` merging |
+
+## Key Test Cases for Platform Normalization
+
+The `tests/deploy/readiness.test.ts` file must cover these normalization scenarios:
+
+| Input | Expected Platform |
+|-------|------------------|
+| `"Vercel"` | Vercel |
+| `"AWS Lambda + API Gateway"` | AWS (general) |
+| `"AWS Amplify"` | AWS Amplify (not general AWS — priority ordering) |
+| `"AWS with CDK"` | AWS CDK |
+| `"Docker"` | Docker |
+| `"GCP Cloud Run"` | GCP |
+| `"Google Cloud Run"` | GCP |
+| `"Fly.io"` | Fly.io |
+| `"Some Unknown Platform"` | Fallback |
+| `"vercel"` (lowercase) | Vercel (case-insensitive) |
 
 ## Estimated Size
 

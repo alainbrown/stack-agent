@@ -14,9 +14,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@clack/prompts": "^1.1.0",
+    "marked": "^15.0.12",
+    "marked-terminal": "^7.3.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/marked-terminal": "^6.1.1",
     "@types/node": "^25.5.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",

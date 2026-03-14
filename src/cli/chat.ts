@@ -1,4 +1,12 @@
 import * as p from '@clack/prompts'
+import { Marked } from 'marked'
+import TerminalRenderer from 'marked-terminal'
+
+const marked = new Marked(TerminalRenderer())
+
+function renderMarkdown(text: string): string {
+  return (marked.parse(text) as string).trimEnd()
+}
 
 export function intro(): void {
   p.intro('create-stack')
@@ -9,7 +17,7 @@ export function outro(message: string): void {
 }
 
 export function renderAgentMessage(text: string): void {
-  p.log.message(text)
+  p.log.message(renderMarkdown(text))
 }
 
 export function renderError(text: string): void {
@@ -25,7 +33,7 @@ export function renderStep(text: string): void {
 }
 
 export function renderPlan(plan: string): void {
-  p.log.info(plan)
+  p.log.info(renderMarkdown(plan))
 }
 
 export async function getUserInput(message?: string, placeholder?: string): Promise<string | null> {

@@ -1,5 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Tool, MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
+import { createLogger } from '../util/logger.js'
+
+const log = createLogger('llm')
+
+function summarizeMessages(messages: MessageParam[]): string {
+  return `${messages.length} messages, last: ${messages.at(-1)?.role ?? 'none'}`
+}
 
 export interface ChatOptions {
   system: string
@@ -28,8 +35,14 @@ function client(): Anthropic {
   return _client
 }
 
-export async function chat(options: ChatOptions) {
+import type { Message } from '@anthropic-ai/sdk/resources/messages.js'
+
+export async function chat(options: ChatOptions): Promise<Message> {
   const { system, messages, tools, maxTokens, mcpServers } = options
+
+  log.debug({ maxTokens, toolCount: tools?.length ?? 0, messages: summarizeMessages(messages) }, 'chat request')
+
+  let response: Message
 
   if (mcpServers && Object.keys(mcpServers).length > 0) {
     const mcpServerList = Object.entries(mcpServers).map(([name, config]) => ({
@@ -41,7 +54,7 @@ export async function chat(options: ChatOptions) {
       }),
     }))
 
-    return client().beta.messages.create(
+    response = await client().beta.messages.create(
       {
         model: 'claude-sonnet-4-6',
         max_tokens: maxTokens,
@@ -55,16 +68,25 @@ export async function chat(options: ChatOptions) {
           'anthropic-beta': 'mcp-client-2025-11-20',
         },
       },
-    )
+    ) as Message
+  } else {
+    response = await client().messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      system,
+      messages,
+      ...(tools && tools.length > 0 && { tools }),
+    })
   }
 
-  return client().messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: maxTokens,
-    system,
-    messages,
-    ...(tools && tools.length > 0 && { tools }),
-  })
+  log.info({
+    stopReason: response.stop_reason,
+    contentBlocks: response.content.length,
+    usage: response.usage,
+  }, 'chat response')
+  log.debug({ content: response.content }, 'chat response content')
+
+  return response
 }
 
 export interface StreamCallbacks {
@@ -79,6 +101,8 @@ export async function chatStream(
 ): Promise<void> {
   const { system, messages, tools, maxTokens } = options
 
+  log.debug({ maxTokens, toolCount: tools?.length ?? 0, messages: summarizeMessages(messages) }, 'chatStream request')
+
   const stream = client().messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: maxTokens,
@@ -92,6 +116,13 @@ export async function chatStream(
   })
 
   const finalMessage = await stream.finalMessage()
+
+  log.info({
+    stopReason: finalMessage.stop_reason,
+    contentBlocks: finalMessage.content.length,
+    usage: finalMessage.usage,
+  }, 'chatStream response')
+  log.debug({ content: finalMessage.content }, 'chatStream response content')
 
   // Report tool_use blocks
   for (const block of finalMessage.content) {

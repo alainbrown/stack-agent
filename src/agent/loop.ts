@@ -263,13 +263,9 @@ export async function runScaffoldLoop(
         if (toolBlock.name === 'run_scaffold') {
           spinner.start(`Running scaffold: ${toolBlock.input.tool as string}`)
 
-          // Find the approved scaffold tool from progress
-          const approvedTool = findApprovedScaffoldTool(progress)
-
           const outputDir = runScaffold(
             toolBlock.input.tool as string,
             toolBlock.input.args as string[],
-            approvedTool,
             projectName,
             cwd,
           )
@@ -335,23 +331,3 @@ export async function runScaffoldLoop(
   }
 }
 
-function findApprovedScaffoldTool(progress: StackProgress): string {
-  // Check all categories for a scaffoldTool
-  const categories = [
-    progress.frontend,
-    progress.backend,
-    progress.database,
-    progress.auth,
-    progress.payments,
-    progress.deployment,
-    ...progress.extras,
-  ]
-
-  for (const choice of categories) {
-    if (choice?.scaffoldTool) {
-      return choice.scaffoldTool
-    }
-  }
-
-  return ''
-}

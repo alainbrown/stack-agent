@@ -97,24 +97,6 @@ describe('executeConversationTool', () => {
       expect(progress.frontend).toBeNull()
     })
 
-    it('includes scaffoldTool and scaffoldArgs when provided', () => {
-      const progress = createProgress()
-      const result = executeConversationTool(
-        'set_decision',
-        {
-          category: 'frontend',
-          component: 'Next.js',
-          reasoning: 'Full-stack',
-          scaffoldTool: 'create-next-app',
-          scaffoldArgs: ['--typescript'],
-        },
-        progress,
-        messages,
-      )
-      expect(result.progress.frontend?.scaffoldTool).toBe('create-next-app')
-      expect(result.progress.frontend?.scaffoldArgs).toEqual(['--typescript'])
-    })
-
     it('appends extras rather than overwriting', () => {
       let progress = createProgress()
       const result1 = executeConversationTool(

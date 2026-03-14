@@ -493,8 +493,6 @@ describe('runScaffoldLoop', () => {
     progress.frontend = {
       component: 'Next.js',
       reasoning: 'User chose',
-      scaffoldTool: 'create-next-app',
-      scaffoldArgs: ['--typescript'],
     }
 
     mockRunScaffold.mockReturnValue('/tmp/my-app')
@@ -544,7 +542,6 @@ describe('runScaffoldLoop', () => {
     progress.frontend = {
       component: 'Next.js',
       reasoning: 'User chose',
-      scaffoldTool: 'create-next-app',
     }
 
     // Return tool calls that will eventually exceed the limit
@@ -575,7 +572,6 @@ describe('runScaffoldLoop', () => {
     progress.frontend = {
       component: 'Next.js',
       reasoning: 'User chose',
-      scaffoldTool: 'create-next-app',
     }
 
     mockRunScaffold.mockImplementation(() => {
@@ -624,7 +620,6 @@ describe('runScaffoldLoop', () => {
     progress.frontend = {
       component: 'Next.js',
       reasoning: 'User chose',
-      scaffoldTool: 'create-next-app',
     }
 
     // Return add_integration call to check projectDir

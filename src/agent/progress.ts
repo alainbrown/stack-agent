@@ -4,8 +4,6 @@ import type { StageEntry } from './stages.js'
 export interface ComponentChoice {
   component: string
   reasoning: string
-  scaffoldTool?: string
-  scaffoldArgs?: string[]
 }
 
 export interface StackProgress {

@@ -35,20 +35,6 @@ describe('setDecision', () => {
     expect(updated.frontend).toEqual(choice)
   })
 
-  it('sets a decision with scaffoldTool and scaffoldArgs', () => {
-    const progress = createProgress()
-    const choice: ComponentChoice = {
-      component: 'Next.js',
-      reasoning: 'Full-stack',
-      scaffoldTool: 'create-next-app',
-      scaffoldArgs: ['--typescript', '--tailwind'],
-    }
-    const updated = setDecision(progress, 'frontend', choice)
-    expect(updated.frontend).toEqual(choice)
-    expect(updated.frontend?.scaffoldTool).toBe('create-next-app')
-    expect(updated.frontend?.scaffoldArgs).toEqual(['--typescript', '--tailwind'])
-  })
-
   it('does not mutate the original progress', () => {
     const progress = createProgress()
     const choice: ComponentChoice = { component: 'React', reasoning: 'Popular' }

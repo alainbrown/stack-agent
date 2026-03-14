@@ -33,15 +33,6 @@ export function conversationToolDefinitions(): Tool[] {
             type: 'string',
             description: 'Explanation for why this component was chosen.',
           },
-          scaffoldTool: {
-            type: 'string',
-            description: 'Optional CLI scaffold tool to use (e.g. create-next-app).',
-          },
-          scaffoldArgs: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Optional arguments to pass to the scaffold tool.',
-          },
         },
         required: ['category', 'component', 'reasoning'],
       },
@@ -179,8 +170,6 @@ export function executeConversationTool(
     const choice: ComponentChoice = {
       component: input.component as string,
       reasoning: input.reasoning as string,
-      ...(input.scaffoldTool !== undefined && { scaffoldTool: input.scaffoldTool as string }),
-      ...(input.scaffoldArgs !== undefined && { scaffoldArgs: input.scaffoldArgs as string[] }),
     }
     const updatedProgress = setDecision(progress, category, choice)
     return {

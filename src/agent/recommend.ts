@@ -1,4 +1,7 @@
 import { chat } from '../llm/client.js'
+import { createLogger } from '../util/logger.js'
+
+const log = createLogger('recommend')
 import {
   setDecision,
   type StackProgress,
@@ -54,11 +57,19 @@ export async function getRecommendations(
       .map((b) => (b as unknown as { type: string; text: string }).text)
       .join('')
 
+    log.info({ rawLength: text.length }, 'received recommendation response')
+    log.debug({ rawText: text }, 'recommendation raw text')
+
     // Strip markdown code fences if present
     const jsonStr = text.replace(/^```(?:json)?\s*\n?/m, '').replace(/\n?```\s*$/m, '').trim()
-    return JSON.parse(jsonStr) as RecommendationResult
-  } catch {
-    // If recommendation fails, return empty — user fills in manually
+    const parsed = JSON.parse(jsonStr) as RecommendationResult
+
+    const categories = Object.keys(parsed).filter((k) => parsed[k] !== null)
+    log.info({ recommended: categories, skipped: Object.keys(parsed).filter((k) => parsed[k] === null) }, 'parsed recommendations')
+
+    return parsed
+  } catch (err) {
+    log.error({ err }, 'recommendation pass failed')
     return {}
   }
 }

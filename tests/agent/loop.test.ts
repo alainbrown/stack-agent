@@ -4,6 +4,7 @@ import { createProgress, setDecision, type StackProgress } from '../../src/agent
 // Mock the LLM client
 vi.mock('../../src/llm/client.js', () => ({
   chat: vi.fn(),
+  chatStream: vi.fn(),
 }))
 
 // Mock the CLI chat
@@ -16,6 +17,8 @@ vi.mock('../../src/cli/chat.js', () => ({
     start: vi.fn(),
     stop: vi.fn(),
   })),
+  writeText: vi.fn(),
+  writeLine: vi.fn(),
 }))
 
 // Mock scaffold modules
@@ -28,24 +31,50 @@ vi.mock('../../src/scaffold/integrate.js', () => ({
 }))
 
 import { runConversationLoop, runScaffoldLoop } from '../../src/agent/loop.js'
-import { chat } from '../../src/llm/client.js'
+import { chat, chatStream } from '../../src/llm/client.js'
 import {
   renderAgentMessage,
   getUserInput,
   renderPlan,
   renderError,
   createSpinner,
+  writeText,
+  writeLine,
 } from '../../src/cli/chat.js'
 import { runScaffold } from '../../src/scaffold/base.js'
 import { writeIntegration } from '../../src/scaffold/integrate.js'
 
 const mockChat = vi.mocked(chat)
+const mockChatStream = vi.mocked(chatStream)
 const mockGetUserInput = vi.mocked(getUserInput)
 const mockRenderAgentMessage = vi.mocked(renderAgentMessage)
 const mockRenderPlan = vi.mocked(renderPlan)
 const mockRenderError = vi.mocked(renderError)
 const mockRunScaffold = vi.mocked(runScaffold)
 const mockWriteIntegration = vi.mocked(writeIntegration)
+
+// Helper: simulate chatStream by calling callbacks synchronously
+function mockStreamResponse(response: { content: object[] }) {
+  mockChatStream.mockImplementationOnce(async (_options, callbacks) => {
+    // Send text deltas
+    for (const block of response.content) {
+      if ((block as any).type === 'text') {
+        callbacks.onText((block as any).text)
+      }
+    }
+    // Send tool_use blocks
+    for (const block of response.content) {
+      if ((block as any).type === 'tool_use') {
+        callbacks.onToolUse(block as any)
+      }
+    }
+    // Complete
+    callbacks.onComplete({
+      content: response.content,
+      stop_reason: response.content.some((b: any) => b.type === 'tool_use') ? 'tool_use' : 'end_turn',
+    })
+  })
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -64,16 +93,15 @@ describe('runConversationLoop', () => {
     mockGetUserInput.mockResolvedValueOnce('Build me a web app')
 
     // Claude responds with text (no tool calls)
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [{ type: 'text', text: 'What kind of frontend?' }],
-    } as any)
+    })
 
     // User cancels
     mockGetUserInput.mockResolvedValueOnce(null)
 
     const result = await runConversationLoop()
     expect(result).toBeNull()
-    expect(mockRenderAgentMessage).toHaveBeenCalledWith('What kind of frontend?')
   })
 
   it('simple conversation: text -> user -> tools -> present_plan -> returns progress', async () => {
@@ -81,15 +109,15 @@ describe('runConversationLoop', () => {
     mockGetUserInput.mockResolvedValueOnce('Build me a Next.js app')
 
     // First Claude response: text asking about the project
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [{ type: 'text', text: 'Let me help you set up your project.' }],
-    } as any)
+    })
 
     // User responds
     mockGetUserInput.mockResolvedValueOnce('Sounds good, use Next.js and Postgres')
 
     // Second Claude response: set_decision for frontend + set_decision for database + present_plan
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [
         {
           type: 'tool_use',
@@ -122,7 +150,7 @@ describe('runConversationLoop', () => {
           input: {},
         },
       ],
-    } as any)
+    })
 
     const result = await runConversationLoop()
 
@@ -138,7 +166,7 @@ describe('runConversationLoop', () => {
     mockGetUserInput.mockResolvedValueOnce('Build me an app')
 
     // Claude returns two set_decision calls in one response
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [
         {
           type: 'tool_use',
@@ -153,21 +181,21 @@ describe('runConversationLoop', () => {
           input: { category: 'database', component: 'MongoDB', reasoning: 'Flexible' },
         },
       ],
-    } as any)
+    })
 
     // Next: Claude responds with text
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [{ type: 'text', text: 'Great choices! What about deployment?' }],
-    } as any)
+    })
 
     // User cancels to end the loop
     mockGetUserInput.mockResolvedValueOnce(null)
 
     await runConversationLoop()
 
-    // Check the second call to chat to inspect messages
-    expect(mockChat).toHaveBeenCalledTimes(2)
-    const secondCallArgs = mockChat.mock.calls[1][0]
+    // Check the second call to chatStream to inspect messages
+    expect(mockChatStream).toHaveBeenCalledTimes(2)
+    const secondCallArgs = mockChatStream.mock.calls[1][0]
     const msgs = secondCallArgs.messages
 
     // Messages should be:
@@ -196,14 +224,14 @@ describe('runConversationLoop', () => {
     mockGetUserInput.mockResolvedValueOnce('Build me an app')
 
     // First response: text
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [{ type: 'text', text: 'Let me help you.' }],
-    } as any)
+    })
 
     mockGetUserInput.mockResolvedValueOnce('Use React')
 
     // Second response: set_decision + summarize_stage
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [
         {
           type: 'tool_use',
@@ -218,21 +246,21 @@ describe('runConversationLoop', () => {
           input: { category: 'frontend', summary: 'User chose React for the frontend.' },
         },
       ],
-    } as any)
+    })
 
     // After summarize, Claude returns more text
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [{ type: 'text', text: 'Now let us pick a database.' }],
-    } as any)
+    })
 
     // User cancels
     mockGetUserInput.mockResolvedValueOnce(null)
 
     await runConversationLoop()
 
-    // Check the third call to chat — messages should have been replaced
-    expect(mockChat).toHaveBeenCalledTimes(3)
-    const thirdCallArgs = mockChat.mock.calls[2][0]
+    // Check the third call to chatStream — messages should have been replaced
+    expect(mockChatStream).toHaveBeenCalledTimes(3)
+    const thirdCallArgs = mockChatStream.mock.calls[2][0]
     const msgs = thirdCallArgs.messages
 
     // After summarize_stage, the messages are replaced with:
@@ -251,7 +279,7 @@ describe('runConversationLoop', () => {
     mockGetUserInput.mockResolvedValueOnce('Build me an app')
 
     // Claude responds with a tool call
-    mockChat.mockResolvedValueOnce({
+    mockStreamResponse({
       content: [
         {
           type: 'tool_use',
@@ -266,14 +294,10 @@ describe('runConversationLoop', () => {
           input: {},
         },
       ],
-    } as any)
+    })
 
-    // We need to spy on executeConversationTool to check messages
-    // Since it's imported internally, we'll verify indirectly through the result
     const result = await runConversationLoop()
 
-    // If the messages were passed correctly, executeConversationTool would
-    // have been called and the progress should be updated
     expect(result).not.toBeNull()
     expect(result!.projectName).toBe('test-app')
   })

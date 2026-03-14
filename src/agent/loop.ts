@@ -1,12 +1,14 @@
 import { join } from 'node:path'
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
-import { chat } from '../llm/client.js'
+import { chat, chatStream } from '../llm/client.js'
 import {
   renderAgentMessage,
   getUserInput,
   renderPlan,
   renderError,
   createSpinner,
+  writeText,
+  writeLine,
 } from '../cli/chat.js'
 import {
   conversationToolDefinitions,
@@ -45,28 +47,42 @@ export async function runConversationLoop(
   while (true) {
     const system = buildConversationPrompt(progress)
 
-    const response = await chat({
-      system,
-      messages: messages as MessageParam[],
-      tools: conversationToolDefinitions(),
-      maxTokens: 4096,
-      mcpServers,
-    })
+    // Stream the response — text deltas render in real-time
+    let contentBlocks: object[] = []
+    const collectedToolUse: Array<{ type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }> = []
+    let hasText = false
 
-    const contentBlocks = response.content
-
-    // Check if there are any tool_use blocks
-    const toolUseBlocks = contentBlocks.filter(
-      (b: { type: string }) => b.type === 'tool_use',
+    await chatStream(
+      {
+        system,
+        messages: messages as MessageParam[],
+        tools: conversationToolDefinitions(),
+        maxTokens: 4096,
+        mcpServers,
+      },
+      {
+        onText: (delta) => {
+          if (!hasText) {
+            hasText = true
+            writeText('\n')
+          }
+          writeText(delta)
+        },
+        onToolUse: (block) => {
+          collectedToolUse.push(block)
+        },
+        onComplete: (response) => {
+          contentBlocks = response.content
+        },
+      },
     )
-    const textBlocks = contentBlocks.filter(
-      (b: { type: string }) => b.type === 'text',
-    )
 
-    // Render text blocks
-    for (const block of textBlocks) {
-      renderAgentMessage((block as { type: 'text'; text: string }).text)
+    if (hasText) {
+      writeLine()
+      writeLine()
     }
+
+    const toolUseBlocks = collectedToolUse
 
     if (toolUseBlocks.length > 0) {
       // CRITICAL: Push ALL content blocks as a SINGLE assistant message

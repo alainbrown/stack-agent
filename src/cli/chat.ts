@@ -52,3 +52,11 @@ export async function getUserInput(message?: string, placeholder?: string): Prom
 export function createSpinner() {
   return p.spinner()
 }
+
+export function writeText(text: string): void {
+  process.stdout.write(text)
+}
+
+export function writeLine(): void {
+  process.stdout.write('\n')
+}

@@ -67,3 +67,42 @@ export async function chat(options: ChatOptions) {
     tools,
   })
 }
+
+export interface StreamCallbacks {
+  onText: (delta: string) => void
+  onToolUse: (block: { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }) => void
+  onComplete: (response: { content: object[]; stop_reason: string }) => void
+}
+
+export async function chatStream(
+  options: ChatOptions,
+  callbacks: StreamCallbacks,
+): Promise<void> {
+  const { system, messages, tools, maxTokens } = options
+
+  const stream = client().messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: maxTokens,
+    system,
+    messages,
+    tools,
+  })
+
+  stream.on('text', (text) => {
+    callbacks.onText(text)
+  })
+
+  const finalMessage = await stream.finalMessage()
+
+  // Report tool_use blocks
+  for (const block of finalMessage.content) {
+    if (block.type === 'tool_use') {
+      callbacks.onToolUse(block as { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> })
+    }
+  }
+
+  callbacks.onComplete({
+    content: finalMessage.content as object[],
+    stop_reason: finalMessage.stop_reason,
+  })
+}

@@ -34,10 +34,11 @@ Additionally, there is no README or project documentation generated. Users get a
 
 ### Overview
 
-The deployment support consists of four pieces, two of which require no new runtime code:
+The deployment support consists of five pieces:
 
 | Piece | Change Type | Location |
 |-------|------------|----------|
+| Extend `add_integration` with `scripts` | Tool schema + integration update | `src/agent/tools.ts`, `src/scaffold/integrate.ts` |
 | README generation | System prompt update | `src/agent/system-prompt.ts` |
 | deploy.sh + npm script | System prompt update | `src/agent/system-prompt.ts` |
 | Deploy readiness check | New module | `src/deploy/readiness.ts` |
@@ -53,11 +54,50 @@ Phase 3 is not a separate Claude loop. It is deterministic logic driven by `prog
 
 ---
 
+### 0. Extend `add_integration` with `scripts` Merging
+
+**Change type:** Tool schema and integration logic update.
+
+The existing `add_integration` tool supports merging `dependencies` and `devDependencies` into `package.json`, but has no mechanism for merging `scripts`. Since Claude needs to add `"deploy": "bash deploy.sh"` to the scripts block, this must be extended.
+
+**Changes to `src/agent/tools.ts`:**
+
+Add a `scripts` property to the `add_integration` input schema:
+
+```typescript
+scripts: {
+  type: 'object',
+  additionalProperties: { type: 'string' },
+  description: 'Map of script names to commands to merge into package.json scripts.',
+},
+```
+
+**Changes to `src/scaffold/integrate.ts`:**
+
+Add `scripts?: Record<string, string>` to the `IntegrationInput` interface. In `writeIntegration`, merge scripts into `package.json` the same way dependencies are merged:
+
+```typescript
+if (scripts !== undefined) {
+  pkg.scripts = {
+    ...(pkg.scripts as Record<string, string> | undefined),
+    ...scripts,
+  }
+}
+```
+
+**Changes to `src/agent/loop.ts`:**
+
+Pass `scripts` from the tool input through to `writeIntegration`, same pattern as `dependencies` and `devDependencies`.
+
+This is a small, consistent extension of the existing pattern — not a new tool.
+
+---
+
 ### 1. README Generation
 
 **Change type:** Scaffold system prompt update only.
 
-The `buildScaffoldPrompt` in `src/agent/system-prompt.ts` gets updated to instruct Claude to generate a comprehensive README.md as the final `add_integration` call during the scaffold phase.
+The `buildScaffoldPrompt` in `src/agent/system-prompt.ts` gets updated to instruct Claude to generate a comprehensive README.md via `add_integration`. This should be the **last** `add_integration` call, after deploy.sh and all other integrations, so the README can reference all generated files.
 
 **Required README sections:**
 
@@ -117,7 +157,9 @@ The script must:
 }
 ```
 
-Both the script file and the `scripts.deploy` entry are written via the existing `add_integration` tool. No new tools or modules needed.
+The script file is written via `add_integration`'s `files` property. The `scripts.deploy` entry is written via the new `scripts` property added in Section 0. The `bash deploy.sh` invocation means the file does not need the executable bit set — but the README should note that `npm run deploy` is the intended invocation.
+
+`deploy.sh` should be committed to version control — it is generated project infrastructure, not a build artifact.
 
 ### 3. Deploy Readiness Check
 
@@ -132,10 +174,11 @@ export interface ReadinessResult {
   platform: string
   cliInstalled: boolean
   cliName: string
-  authenticated: boolean | null  // null = cannot determine
+  authenticated: boolean | null  // null = cannot determine or timed out
   installCmd: string
   authCmd: string
   deployCmd: string
+  envVarCmd: string             // platform command for setting env vars
 }
 
 export function checkDeployReadiness(
@@ -148,7 +191,10 @@ export function checkDeployReadiness(
 | Platform | CLI binary | Auth check command | Install command |
 |----------|-----------|-------------------|-----------------|
 | Vercel | `vercel` | `vercel whoami` | `npm i -g vercel` |
-| AWS | `aws` | `aws sts get-caller-identity` | See docs.aws.amazon.com |
+| AWS (general) | `aws` | `aws sts get-caller-identity` | See docs.aws.amazon.com |
+| AWS Amplify | `amplify` | `amplify status` | `npm i -g @aws-amplify/cli` |
+| AWS CDK | `cdk` | `aws sts get-caller-identity` | `npm i -g aws-cdk` |
+| AWS SST | `npx sst` | `aws sts get-caller-identity` | (uses npx, no global install) |
 | GCP | `gcloud` | `gcloud auth print-identity-token` | See cloud.google.com/sdk |
 | Docker | `docker` | `docker info` | Platform-specific |
 | Railway | `railway` | `railway whoami` | `npm i -g @railway/cli` |
@@ -156,12 +202,27 @@ export function checkDeployReadiness(
 
 **Behavior:**
 
-- Uses `execFileSync` with `{ stdio: 'pipe' }` to check CLI presence and auth
-- Catches errors gracefully — a failed check means "not ready", never crashes the agent
+- Uses `execFileSync` with `{ stdio: 'pipe', timeout: 5000 }` to check CLI presence and auth. A timeout is treated as `authenticated: null` (indeterminate), never as an error.
+- Catches all errors gracefully — a failed check means "not ready", never crashes the agent
 - Pure detection: never modifies system state, never writes files, never deploys
 - Returns a structured result that the terminal output renderer consumes
 
-**Mapping deployment component to platform:** The `deploymentComponent` string from progress (e.g., "Vercel", "AWS Lambda", "GCP Cloud Run", "Docker") is normalized to match the platform detection matrix. Unrecognized platforms get a generic result pointing users to the README.
+**Mapping deployment component to platform:** The `deploymentComponent` string from progress is free-text (e.g., "Vercel", "AWS Lambda + API Gateway", "GCP Cloud Run", "Docker"). Normalization strategy:
+
+1. Lowercase the component string
+2. Check for keywords in priority order:
+   - Contains `"amplify"` → AWS Amplify
+   - Contains `"cdk"` → AWS CDK
+   - Contains `"sst"` → AWS SST
+   - Contains `"vercel"` → Vercel
+   - Contains `"aws"` or `"lambda"` or `"ec2"` → AWS (general)
+   - Contains `"gcp"` or `"google cloud"` or `"cloud run"` → GCP
+   - Contains `"docker"` or `"container"` → Docker
+   - Contains `"railway"` → Railway
+   - Contains `"fly"` or `"fly.io"` → Fly.io
+3. No match → return a fallback result with `cliInstalled: false`, `authenticated: null`, and a message pointing users to the README for deployment instructions
+
+This keyword-based approach is simple and handles the common variations Claude might produce during conversation.
 
 ### 4. Enhanced Terminal Output
 
@@ -172,9 +233,11 @@ export function checkDeployReadiness(
 ```typescript
 export function renderPostScaffold(
   projectName: string,
-  readiness: ReadinessResult
+  readiness: ReadinessResult | null
 ): void
 ```
+
+When `readiness` is `null`, only the local development section is rendered (no deployment section).
 
 **Output format when ready:**
 
@@ -230,25 +293,34 @@ Gets replaced with:
 
 ```typescript
 if (success) {
-  const readiness = checkDeployReadiness(progress.deployment!.component)
+  const readiness = progress.deployment
+    ? checkDeployReadiness(progress.deployment.component)
+    : null
   renderPostScaffold(progress.projectName!, readiness)
   outro('Happy building!')
 }
 ```
 
+If `progress.deployment` is null (unlikely — `isComplete()` requires it, but defensive against bugs where Claude finishes the scaffold loop without a deployment decision), the readiness check is skipped and only the local development section is rendered.
+
 Uses existing `@clack/prompts` helpers (`p.log.step`, `p.log.info`, `p.log.warn`). No new dependencies.
+
+**Note on `npm install`:** The `add_integration` tool merges dependencies into `package.json` but does not run `npm install`. The initial scaffold CLI (e.g., `create-next-app`) installs its own dependencies, but any dependencies added by subsequent `add_integration` calls will be missing from `node_modules`. The "Local Development" output must include `npm install` as a step. This is already reflected in the output mockups above.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
+| `src/agent/tools.ts` | Add `scripts` property to `add_integration` input schema |
+| `src/scaffold/integrate.ts` | Add `scripts` to `IntegrationInput`, merge into `package.json` |
+| `src/agent/loop.ts` | Pass `scripts` from tool input through to `writeIntegration` |
 | `src/agent/system-prompt.ts` | Update `buildScaffoldPrompt` — add README and deploy.sh generation instructions |
-| `src/deploy/readiness.ts` | **New file** — deploy readiness check (~80-100 lines) |
+| `src/deploy/readiness.ts` | **New file** — deploy readiness check (~100-120 lines) |
 | `src/cli/chat.ts` | Add `renderPostScaffold` function (~30-40 lines) |
 | `src/index.ts` | Replace hardcoded next steps with readiness check + enhanced output (~10 lines) |
-| `tests/deploy/readiness.test.ts` | **New file** — tests for readiness check |
-| `tests/cli/chat.test.ts` | Tests for `renderPostScaffold` (if chat tests exist, otherwise new file) |
+| `tests/deploy/readiness.test.ts` | **New file** — tests for readiness check and platform normalization |
+| `tests/scaffold/integrate.test.ts` | Add tests for `scripts` merging |
 
 ## Estimated Size
 
-~120-150 lines of new runtime code. Two of the four pieces are system prompt text changes only.
+~150-180 lines of new runtime code. The system prompt updates are text changes that add ~20-30 lines of prompt instructions.

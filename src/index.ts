@@ -1,16 +1,12 @@
-import * as p from '@clack/prompts'
-import { intro, outro, renderError, renderPostScaffold } from './cli/chat.js'
-import {
-  renderResumePrompt,
-  renderStageList,
-  renderReviewScreen,
-} from './cli/chat.js'
-import { checkDeployReadiness } from './deploy/readiness.js'
-import { runStageLoop } from './agent/loop.js'
-import { runScaffoldLoop } from './agent/loop.js'
+import React from 'react'
+import { withFullScreen } from 'fullscreen-ink'
+import { App } from './cli/app.js'
 import { StageManager } from './agent/stage-manager.js'
 import { serializeProgress } from './agent/progress.js'
 import { chat } from './llm/client.js'
+import { runScaffoldLoop } from './agent/loop.js'
+import { renderPostScaffold } from './cli/chat.js'
+import { checkDeployReadiness } from './deploy/readiness.js'
 import type { InvalidationFn } from './agent/stages.js'
 
 const INVALIDATION_PROMPT = `You are evaluating whether changing a technology stack decision affects other decisions.
@@ -78,9 +74,7 @@ What needs to change?`
   }
 }
 
-async function main() {
-  intro()
-
+async function main(fresh = false) {
   const cwd = process.cwd()
   const invalidationFn = createInvalidationFn()
 
@@ -89,126 +83,73 @@ async function main() {
     process.exit(0)
   })
 
-  // Check for existing session
+  // Handle --fresh: delete saved session
+  if (fresh) {
+    const tempManager = StageManager.resume(cwd)
+    tempManager?.cleanup()
+    console.log('Session cleared. Starting fresh.\n')
+  }
+
+  // Handle resume before fullscreen
   let manager: StageManager
-  const existingSession = StageManager.detect(cwd)
+  const existingSession = fresh ? null : StageManager.detect(cwd)
 
   if (existingSession) {
-    const resumeResult = await renderResumePrompt(existingSession)
-    if (resumeResult === 'cancel') {
-      outro('See you next time.')
-      return
-    }
-    if (resumeResult === 'fresh') {
-      const tempManager = StageManager.resume(cwd)
-      tempManager?.cleanup()
+    console.log(`\nFound saved progress for "${existingSession.progress.projectName ?? 'unnamed'}"`)
+    console.log('Run with --fresh to start over.\n')
+    const resumed = StageManager.resume(cwd, invalidationFn)
+    if (!resumed) {
+      console.log('Could not restore session. Starting fresh.')
       manager = StageManager.start(cwd, invalidationFn)
     } else {
-      const resumed = StageManager.resume(cwd, invalidationFn)
-      if (!resumed) {
-        p.log.warn('Could not restore session. Starting fresh.')
-        manager = StageManager.start(cwd, invalidationFn)
-      } else {
-        manager = resumed
-      }
+      manager = resumed
     }
   } else {
     manager = StageManager.start(cwd, invalidationFn)
   }
 
-  // Phase 1: Stage-driven conversation loop
-  while (true) {
-    const stage = manager.currentStage()
+  // Phase 1: Fullscreen conversation
+  let shouldBuild = false
 
-    if (!stage) {
-      const reviewResult = await renderReviewScreen(manager.progress)
-      if (reviewResult === 'confirm') {
-        break
-      } else if (reviewResult === 'adjust') {
-        const listResult = await renderStageList(manager.stages, null, manager.progress)
-        if (listResult.kind === 'cancel') {
-          manager.save()
-          outro('Progress saved. Run stack-agent again to resume.')
-          return
-        }
-        if (listResult.kind === 'select') {
-          manager.navigateTo(listResult.stageId)
-        }
-        continue
-      } else {
-        manager.save()
-        outro('Progress saved. Run stack-agent again to resume.')
-        return
-      }
+  const ink = withFullScreen(
+    React.createElement(App, {
+      manager,
+      onBuild: () => { shouldBuild = true },
+      onExit: () => { shouldBuild = false },
+    }),
+  )
+  await ink.start()
+  await ink.waitUntilExit()
+
+  // Phase 2: Scaffold (normal stdout, outside fullscreen)
+  if (shouldBuild) {
+    console.log('\nScaffolding your project...\n')
+    const success = await runScaffoldLoop(manager.progress)
+
+    if (success) {
+      const readiness = manager.progress.deployment
+        ? checkDeployReadiness(manager.progress.deployment.component)
+        : null
+      renderPostScaffold(manager.progress.projectName!, readiness)
+      manager.cleanup()
+      console.log('\nHappy building!\n')
+    } else {
+      console.error('\nScaffolding encountered errors. Check the output above.\n')
     }
-
-    const result = await runStageLoop(stage, manager)
-
-    switch (result.outcome) {
-      case 'complete': {
-        const wasNavigation = manager.isNavigating()
-        const oldValue = manager.getPendingOldValue()
-        manager.completeStage(stage.id, result.summary)
-        manager.save()
-
-        if (wasNavigation) {
-          await manager.invalidateAfter(stage.id, oldValue)
-          manager.save()
-        }
-        break
-      }
-      case 'skipped':
-        manager.skipStage(stage.id)
-        manager.save()
-        break
-      case 'navigate': {
-        const listResult = await renderStageList(manager.stages, stage.id, manager.progress)
-        if (listResult.kind === 'cancel') {
-          manager.restorePendingNavigation()
-          continue
-        }
-        if (listResult.kind === 'review') {
-          continue
-        }
-        if (listResult.kind === 'select') {
-          if (listResult.stageId !== stage.id) {
-            manager.navigateTo(listResult.stageId)
-          }
-        }
-        break
-      }
-      case 'cancel':
-        manager.save()
-        outro('Progress saved. Run stack-agent again to resume.')
-        return
-    }
-  }
-
-  // Phase 2: Scaffold
-  const success = await runScaffoldLoop(manager.progress)
-
-  if (success) {
-    const readiness = manager.progress.deployment
-      ? checkDeployReadiness(manager.progress.deployment.component)
-      : null
-    renderPostScaffold(manager.progress.projectName!, readiness)
-    manager.cleanup()
-    outro('Happy building!')
-  } else {
-    renderError('Scaffolding encountered errors. Check the output above.')
-    outro('You may need to fix issues manually.')
   }
 }
 
-const command = process.argv[2]
+const args = process.argv.slice(2)
+const command = args[0]
+const isFresh = args.includes('--fresh')
 
-if (!command || command === 'init') {
-  main().catch((err) => {
+if (!command || command === 'init' || command === '--fresh') {
+  main(isFresh).catch((err) => {
     console.error(err)
     process.exit(1)
   })
 } else {
   console.error(`Unknown command: ${command}`)
-  console.error('Usage: stack-agent [init]')
+  console.error('Usage: stack-agent [init] [--fresh]')
   process.exit(1)
 }

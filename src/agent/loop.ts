@@ -1,13 +1,7 @@
 import { join } from 'node:path'
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
 import { chat, chatStream } from '../llm/client.js'
-import {
-  getUserInput,
-  renderError,
-  createSpinner,
-  writeText,
-  writeLine,
-} from '../cli/chat.js'
+import type { ConversationBridge } from '../cli/bridge.js'
 import {
   conversationToolDefinitions,
   scaffoldToolDefinitions,
@@ -35,6 +29,7 @@ export type StageLoopResult =
 export async function runStageLoop(
   stage: StageEntry,
   manager: StageManager,
+  bridge: ConversationBridge,
   mcpServers?: Record<string, { url: string; apiKey?: string }>,
 ): Promise<StageLoopResult> {
   const messages = manager.messages
@@ -53,6 +48,9 @@ export async function runStageLoop(
     let contentBlocks: object[] = []
     const collectedToolUse: Array<{ type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }> = []
     let hasText = false
+    let fullText = ''
+
+    bridge.onSpinnerStart()
 
     await chatStream(
       {
@@ -64,11 +62,9 @@ export async function runStageLoop(
       },
       {
         onText: (delta) => {
-          if (!hasText) {
-            hasText = true
-            writeText('\n')
-          }
-          writeText(delta)
+          hasText = true
+          fullText += delta
+          bridge.onStreamText(delta)
         },
         onToolUse: (block) => {
           collectedToolUse.push(block)
@@ -80,8 +76,7 @@ export async function runStageLoop(
     )
 
     if (hasText) {
-      writeLine()
-      writeLine()
+      bridge.onStreamText('\n')
     }
 
     const toolUseBlocks = collectedToolUse
@@ -100,6 +95,26 @@ export async function runStageLoop(
           id: string
           name: string
           input: Record<string, unknown>
+        }
+
+        // Intercept present_options before executeConversationTool
+        if (toolBlock.name === 'present_options') {
+          const options = toolBlock.input.options as Array<{ label: string; description: string; recommended?: boolean }>
+          bridge.onPresentOptions(options)
+          const input = await bridge.waitForInput()
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolBlock.id,
+            content: input.kind === 'select'
+              ? `User selected: ${input.value}`
+              : input.kind === 'text'
+                ? `User wrote: ${input.value}`
+                : 'User cancelled.',
+          })
+          if (input.kind === 'cancel') {
+            return { outcome: 'cancel' }
+          }
+          continue
         }
 
         const result = executeConversationTool(
@@ -162,7 +177,8 @@ export async function runStageLoop(
     }
 
     // No tool use — get user input
-    const inputResult = await getUserInput('Your response')
+    bridge.onStreamEnd(fullText)
+    const inputResult = await bridge.waitForInput()
 
     if (inputResult.kind === 'cancel') return { outcome: 'cancel' }
     if (inputResult.kind === 'navigate') return { outcome: 'navigate' }
@@ -172,6 +188,13 @@ export async function runStageLoop(
       content: contentBlocks as MessageParam['content'],
     })
     messages.push({ role: 'user', content: inputResult.value })
+  }
+}
+
+function createSimpleSpinner() {
+  return {
+    start: (msg: string) => process.stdout.write(`  ${msg}...`),
+    stop: (msg: string) => process.stdout.write(` ${msg}\n`),
   }
 }
 
@@ -230,11 +253,11 @@ export async function runScaffoldLoop(
 
       toolCallCount++
       if (toolCallCount > maxToolCalls) {
-        renderError(`Tool call limit exceeded (${maxToolCalls}). Stopping scaffold loop.`)
+        console.error(`Tool call limit exceeded (${maxToolCalls}). Stopping scaffold loop.`)
         return false
       }
 
-      const spinner = createSpinner()
+      const spinner = createSimpleSpinner()
 
       try {
         if (toolBlock.name === 'run_scaffold') {

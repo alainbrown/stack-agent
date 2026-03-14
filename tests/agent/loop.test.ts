@@ -1,25 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createProgress, type StackProgress } from '../../src/agent/progress.js'
 import { DEFAULT_STAGES, type StageEntry } from '../../src/agent/stages.js'
+import { createBridge, type ConversationBridge } from '../../src/cli/bridge.js'
 
 // Mock the LLM client
 vi.mock('../../src/llm/client.js', () => ({
   chat: vi.fn(),
   chatStream: vi.fn(),
-}))
-
-// Mock the CLI chat
-vi.mock('../../src/cli/chat.js', () => ({
-  renderAgentMessage: vi.fn(),
-  getUserInput: vi.fn(),
-  renderPlan: vi.fn(),
-  renderError: vi.fn(),
-  createSpinner: vi.fn(() => ({
-    start: vi.fn(),
-    stop: vi.fn(),
-  })),
-  writeText: vi.fn(),
-  writeLine: vi.fn(),
 }))
 
 // Mock scaffold modules
@@ -33,24 +20,11 @@ vi.mock('../../src/scaffold/integrate.js', () => ({
 
 import { runStageLoop, runScaffoldLoop, type StageLoopResult } from '../../src/agent/loop.js'
 import { chat, chatStream } from '../../src/llm/client.js'
-import {
-  renderAgentMessage,
-  getUserInput,
-  renderPlan,
-  renderError,
-  createSpinner,
-  writeText,
-  writeLine,
-} from '../../src/cli/chat.js'
 import { runScaffold } from '../../src/scaffold/base.js'
 import { writeIntegration } from '../../src/scaffold/integrate.js'
 
 const mockChat = vi.mocked(chat)
 const mockChatStream = vi.mocked(chatStream)
-const mockGetUserInput = vi.mocked(getUserInput)
-const mockRenderAgentMessage = vi.mocked(renderAgentMessage)
-const mockRenderPlan = vi.mocked(renderPlan)
-const mockRenderError = vi.mocked(renderError)
 const mockRunScaffold = vi.mocked(runScaffold)
 const mockWriteIntegration = vi.mocked(writeIntegration)
 
@@ -67,6 +41,7 @@ function createMockManager(overrides: Record<string, unknown> = {}) {
     set messages(v: any[]) { this._messages = v },
     get progress() { return this._progress },
     set progress(v: StackProgress) { this._progress = v },
+    restorePendingNavigation: vi.fn(),
     ...overrides,
   }
 }
@@ -101,20 +76,27 @@ beforeEach(() => {
 describe('runStageLoop', () => {
   it('returns cancel when user cancels at initial input', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Claude responds with text (no tool calls)
     mockStreamResponse({
       content: [{ type: 'text', text: 'What frontend framework?' }],
     })
 
-    mockGetUserInput.mockResolvedValueOnce({ kind: 'cancel' })
+    // Intercept waitForInput to schedule resolution after it's called
+    const origWaitForInput = bridge.waitForInput.bind(bridge)
+    bridge.waitForInput = () => {
+      queueMicrotask(() => bridge.resolveInput({ kind: 'cancel' }))
+      return origWaitForInput()
+    }
 
-    const result = await runStageLoop(mockStage, mockManager as any)
+    const result = await runStageLoop(mockStage, mockManager as any, bridge)
     expect(result).toEqual({ outcome: 'cancel' })
   })
 
   it('returns cancel when user cancels during conversation', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Claude responds with text (no tool calls)
     mockStreamResponse({
@@ -122,36 +104,54 @@ describe('runStageLoop', () => {
     })
 
     // User provides input
-    mockGetUserInput.mockResolvedValueOnce({ kind: 'text', value: 'Build me a web app' })
+    queueMicrotask(() => bridge.resolveInput({ kind: 'text', value: 'Build me a web app' }))
 
     // Claude responds with more text
     mockStreamResponse({
       content: [{ type: 'text', text: 'Great choice!' }],
     })
 
-    // User cancels
-    mockGetUserInput.mockResolvedValueOnce({ kind: 'cancel' })
+    // User cancels on second input
+    // We need a small delay for the second resolution since the first loop iteration needs to complete
+    const origWaitForInput = bridge.waitForInput.bind(bridge)
+    let callCount = 0
+    bridge.waitForInput = () => {
+      callCount++
+      if (callCount === 1) {
+        queueMicrotask(() => bridge.resolveInput({ kind: 'text', value: 'Build me a web app' }))
+      } else {
+        queueMicrotask(() => bridge.resolveInput({ kind: 'cancel' }))
+      }
+      return origWaitForInput()
+    }
 
-    const result = await runStageLoop(mockStage, mockManager as any)
+    const result = await runStageLoop(mockStage, mockManager as any, bridge)
     expect(result).toEqual({ outcome: 'cancel' })
   })
 
-  it('returns navigate when user presses left arrow', async () => {
+  it('returns navigate when user sends navigate input', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Claude responds with text
     mockStreamResponse({
       content: [{ type: 'text', text: 'What frontend framework?' }],
     })
 
-    mockGetUserInput.mockResolvedValueOnce({ kind: 'navigate' })
+    // Intercept waitForInput to schedule resolution after it's called
+    const origWaitForInput = bridge.waitForInput.bind(bridge)
+    bridge.waitForInput = () => {
+      queueMicrotask(() => bridge.resolveInput({ kind: 'navigate' }))
+      return origWaitForInput()
+    }
 
-    const result = await runStageLoop(mockStage, mockManager as any)
+    const result = await runStageLoop(mockStage, mockManager as any, bridge)
     expect(result).toEqual({ outcome: 'navigate' })
   })
 
   it('returns complete with summary when set_decision + summarize_stage are called', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Claude responds with set_decision + summarize_stage
     mockStreamResponse({
@@ -171,7 +171,7 @@ describe('runStageLoop', () => {
       ],
     })
 
-    const result = await runStageLoop(mockStage, mockManager as any)
+    const result = await runStageLoop(mockStage, mockManager as any, bridge)
 
     expect(result).toEqual({ outcome: 'complete', summary: 'Chose Next.js for the frontend.' })
     expect(mockManager.save).toHaveBeenCalled()
@@ -180,6 +180,7 @@ describe('runStageLoop', () => {
 
   it('returns complete for project_info stage even without set_decision', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Claude responds with set_project_info + summarize_stage
     mockStreamResponse({
@@ -199,7 +200,7 @@ describe('runStageLoop', () => {
       ],
     })
 
-    const result = await runStageLoop(mockProjectInfoStage, mockManager as any)
+    const result = await runStageLoop(mockProjectInfoStage, mockManager as any, bridge)
 
     expect(result).toEqual({ outcome: 'complete', summary: 'Project: my-app - A web app' })
     expect(mockManager.progress.projectName).toBe('my-app')
@@ -207,6 +208,7 @@ describe('runStageLoop', () => {
 
   it('returns skipped when summarize_stage is called without set_decision', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Claude decides payments not needed, just summarizes
     mockStreamResponse({
@@ -221,7 +223,7 @@ describe('runStageLoop', () => {
     })
 
     const paymentsStage: StageEntry = { id: 'payments', label: 'Payments', status: 'pending', progressKeys: ['payments'] }
-    const result = await runStageLoop(paymentsStage, mockManager as any)
+    const result = await runStageLoop(paymentsStage, mockManager as any, bridge)
 
     expect(result).toEqual({ outcome: 'skipped' })
     expect(mockManager.save).toHaveBeenCalled()
@@ -229,12 +231,23 @@ describe('runStageLoop', () => {
 
   it('multi-tool turn: pushes ONE assistant message and ONE user message', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Initial response: Claude asks for project name
     mockStreamResponse({
       content: [{ type: 'text', text: 'What is your project name?' }],
     })
-    mockGetUserInput.mockResolvedValueOnce({ kind: 'text', value: 'Build me an app' })
+
+    // Use waitForInput override to schedule resolutions
+    const origWaitForInput = bridge.waitForInput.bind(bridge)
+    let callCount = 0
+    bridge.waitForInput = () => {
+      callCount++
+      if (callCount === 1) {
+        queueMicrotask(() => bridge.resolveInput({ kind: 'text', value: 'Build me an app' }))
+      }
+      return origWaitForInput()
+    }
 
     // Claude returns two set_decision calls + summarize_stage in one response
     mockStreamResponse({
@@ -254,7 +267,7 @@ describe('runStageLoop', () => {
       ],
     })
 
-    const result = await runStageLoop(mockStage, mockManager as any)
+    const result = await runStageLoop(mockStage, mockManager as any, bridge)
 
     // Verify the result
     expect(result).toEqual({ outcome: 'complete', summary: 'Chose React for frontend.' })
@@ -263,19 +276,30 @@ describe('runStageLoop', () => {
 
   it('handles summarize_stage by replacing earlier messages with summary', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Initial response: Claude asks for project name
     mockStreamResponse({
       content: [{ type: 'text', text: 'What is your project name?' }],
     })
-    mockGetUserInput.mockResolvedValueOnce({ kind: 'text', value: 'Build me an app' })
+
+    // Use waitForInput override to schedule resolutions
+    const origWaitForInput = bridge.waitForInput.bind(bridge)
+    let callCount = 0
+    bridge.waitForInput = () => {
+      callCount++
+      if (callCount === 1) {
+        queueMicrotask(() => bridge.resolveInput({ kind: 'text', value: 'Build me an app' }))
+      } else if (callCount === 2) {
+        queueMicrotask(() => bridge.resolveInput({ kind: 'text', value: 'Use React' }))
+      }
+      return origWaitForInput()
+    }
 
     // First response: text
     mockStreamResponse({
       content: [{ type: 'text', text: 'Let me help you.' }],
     })
-
-    mockGetUserInput.mockResolvedValueOnce({ kind: 'text', value: 'Use React' })
 
     // Second response: set_decision + summarize_stage
     mockStreamResponse({
@@ -295,7 +319,7 @@ describe('runStageLoop', () => {
       ],
     })
 
-    const result = await runStageLoop(mockStage, mockManager as any)
+    const result = await runStageLoop(mockStage, mockManager as any, bridge)
 
     expect(result).toEqual({ outcome: 'complete', summary: 'User chose React for the frontend.' })
 
@@ -309,6 +333,7 @@ describe('runStageLoop', () => {
 
   it('passes live messages array to executeConversationTool', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     // Claude responds with a tool call
     mockStreamResponse({
@@ -328,7 +353,7 @@ describe('runStageLoop', () => {
       ],
     })
 
-    const result = await runStageLoop(mockProjectInfoStage, mockManager as any)
+    const result = await runStageLoop(mockProjectInfoStage, mockManager as any, bridge)
 
     expect(result).toEqual({ outcome: 'complete', summary: 'Project: test-app' })
     expect(mockManager.progress.projectName).toBe('test-app')
@@ -336,6 +361,7 @@ describe('runStageLoop', () => {
 
   it('updates manager.progress after each tool execution', async () => {
     const mockManager = createMockManager()
+    const bridge = createBridge()
 
     mockStreamResponse({
       content: [
@@ -354,10 +380,97 @@ describe('runStageLoop', () => {
       ],
     })
 
-    await runStageLoop(mockStage, mockManager as any)
+    await runStageLoop(mockStage, mockManager as any, bridge)
 
     // Progress should be updated on the manager
     expect(mockManager.progress.frontend!.component).toBe('Vue')
+  })
+
+  it('intercepts present_options and waits for bridge input', async () => {
+    const mockManager = createMockManager()
+    const bridge = createBridge()
+
+    // First: Claude streams text + present_options
+    mockStreamResponse({
+      content: [
+        { type: 'text', text: 'Here are your options:' },
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'present_options',
+          input: {
+            options: [
+              { label: 'Next.js', description: 'Full-stack React framework', recommended: true },
+              { label: 'Remix', description: 'Web standards framework' },
+            ],
+          },
+        },
+      ],
+    })
+
+    // Intercept waitForInput to resolve with user selection
+    const origWaitForInput = bridge.waitForInput.bind(bridge)
+    bridge.waitForInput = () => {
+      queueMicrotask(() => bridge.resolveInput({ kind: 'select', value: 'Next.js' }))
+      return origWaitForInput()
+    }
+
+    // Capture messages at each chatStream call to avoid mutation issues
+    const capturedMessages: any[][] = []
+    const origMockImpl = mockChatStream.getMockImplementation()
+    mockChatStream.mockImplementation(async (options, callbacks) => {
+      capturedMessages.push(JSON.parse(JSON.stringify(options.messages)))
+      // Delegate to the next queued implementation
+      const impl = queuedImpls.shift()
+      if (impl) return impl(options, callbacks)
+    })
+
+    // Queue the second response
+    const queuedImpls: any[] = []
+
+    // Re-mock: first call is the text+present_options, second is set_decision+summarize
+    mockChatStream.mockReset()
+
+    mockStreamResponse({
+      content: [
+        { type: 'text', text: 'Here are your options:' },
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'present_options',
+          input: {
+            options: [
+              { label: 'Next.js', description: 'Full-stack React framework', recommended: true },
+              { label: 'Remix', description: 'Web standards framework' },
+            ],
+          },
+        },
+      ],
+    })
+
+    // Then Claude responds with set_decision + summarize_stage
+    mockStreamResponse({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'tool_2',
+          name: 'set_decision',
+          input: { category: 'frontend', component: 'Next.js', reasoning: 'User selected' },
+        },
+        {
+          type: 'tool_use',
+          id: 'tool_3',
+          name: 'summarize_stage',
+          input: { category: 'frontend', summary: 'Chose Next.js.' },
+        },
+      ],
+    })
+
+    const result = await runStageLoop(mockStage, mockManager as any, bridge)
+
+    expect(result).toEqual({ outcome: 'complete', summary: 'Chose Next.js.' })
+    // Verify chatStream was called twice (present_options was intercepted, not passed to executeConversationTool)
+    expect(mockChatStream).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -454,9 +567,6 @@ describe('runScaffoldLoop', () => {
     const result = await runScaffoldLoop(progress)
 
     expect(result).toBe(false)
-    expect(mockRenderError).toHaveBeenCalledWith(
-      expect.stringMatching(/tool call limit/i),
-    )
   })
 
   it('sends error back as tool_result with is_error when tool throws', async () => {

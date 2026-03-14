@@ -99,6 +99,9 @@ function MockApp() {
   const currentStage = stages.find((s) => s.status === 'pending') ?? null
   const completedCount = stages.filter((s) => s.status === 'complete').length
 
+  // Header = 2 lines, Footer = 2 lines
+  const contentHeight = height - 4
+
   return (
     <Box flexDirection="column" width={width} height={height}>
       <Header
@@ -108,7 +111,7 @@ function MockApp() {
         showDots={view !== 'stage_list'}
       />
 
-      <Box flexDirection="column" flexGrow={1} paddingX={1}>
+      <Box flexDirection="column" height={contentHeight} paddingX={1} borderStyle="single" borderTop={false} borderBottom={false}>
         {/* HOME — key guide */}
         {view === 'home' && (
           <Box flexDirection="column">

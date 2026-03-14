@@ -46,14 +46,19 @@ export type InputResult =
   | { kind: 'cancel' }
   | { kind: 'navigate' }
 
+let inputCallCount = 0
+
 export async function getUserInput(message?: string, placeholder?: string): Promise<InputResult> {
+  inputCallCount++
+  const hint = inputCallCount <= 3 ? '  \u2190 stage list' : ''
+
   const preKey = await listenForPreKey()
   if (preKey === 'navigate') {
     return { kind: 'navigate' }
   }
 
   const result = await p.text({
-    message: message ?? '›',
+    message: (message ?? '\u203a') + hint,
     placeholder: placeholder ?? 'Type your message...',
     initialValue: preKey ?? undefined,
   })

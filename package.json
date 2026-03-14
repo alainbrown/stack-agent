@@ -36,7 +36,8 @@
     "dev": "tsx src/index.ts",
     "build": "tsup",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "mockup": "tsx src/cli/mockup.tsx"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

@@ -7,6 +7,7 @@ export interface StageEntry {
   label: string
   status: StageStatus
   summary?: string
+  confirmed?: boolean    // true = user reviewed/confirmed, false/undefined = LLM suggestion
   progressKeys: string[]
 }
 

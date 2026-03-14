@@ -118,7 +118,9 @@ class StageManager {
   completeStage(id: string, summary: string): void
   skipStage(id: string): void
   navigateTo(id: string): void            // user selected from stage list
-                                          // preserves old decision until new one confirmed
+  // Internally stashes old decision in `private pendingNavigation?: { stageId, oldValue }`
+  // On stage complete → discard stash, apply new decision, call invalidateAfter
+  // On cancel/navigate away → restore old value from stash
 
   // Dynamic stages (LLM-driven)
   addStage(entry: StageEntry, afterId: string): void
@@ -200,6 +202,7 @@ Rendered using `@clack/prompts` select when the user presses left arrow:
 - **✓** completed — selectable, takes you back to modify that decision
 - **●** current — selectable, returns to where you were
 - **○** pending — selectable (allows jumping ahead if the user wants to discuss a later topic first; the stage loop scoping handles this naturally)
+- **–** skipped — shown dimmed, selectable (user can revisit if they change their mind)
 - **★** Review & Build — selectable once `isComplete(progress)` returns true
 
 ### Review Screen
@@ -252,7 +255,7 @@ async function runStageLoop(
 
 The stage loop determines completion by checking tool results after each batch:
 
-- **For `project_info` stage**: Complete when a tool batch includes `set_project_info` followed by `summarize_stage`.
+- **For `project_info` stage**: Complete when `set_project_info` has been called (in this or any prior batch) and `summarize_stage` is called for this stage. The two calls need not be in the same batch.
 - **For category stages** (`frontend`, `backend`, etc.): Complete when a tool batch includes `set_decision` for this stage's category. The loop checks `toolBlock.input.category === stage.id` after executing the tool.
 - **For `extras` stage**: Complete only via `summarize_stage` (since extras can have zero or many decisions). The `extras` stage is the only stage where `set_decision` does not trigger completion — it just appends to the array.
 - **For skipping**: If Claude calls `summarize_stage` without having called `set_decision` for this stage in the current or any prior batch, the stage is skipped.
@@ -263,9 +266,11 @@ The existing `ConversationToolResult.signal` field is extended:
 export interface ConversationToolResult {
   progress: StackProgress
   response: string
-  signal?: 'present_plan' | 'stage_complete' | 'stage_skipped'
+  signal?: 'stage_complete' | 'stage_skipped'
 }
 ```
+
+The `'present_plan'` signal value and its handler in `executeConversationTool` are both deleted alongside the tool.
 
 ### The `present_plan` Tool
 
@@ -275,7 +280,7 @@ The `present_plan` tool is **removed** from `conversationToolDefinitions()`. Its
 
 - **Scoped system prompt** — `buildConversationPrompt` receives the current stage ID so Claude knows which topic to focus on, plus the full progress for context (see Per-Stage Prompt Structure below)
 - **Exit conditions** — The loop ends based on the stage completion detection rules above
-- **Save on progress change** — After processing a tool batch that includes `set_decision` or `set_project_info`, call `manager.save()`
+- **Save on progress change** — After processing a tool batch that includes `set_decision`, `set_project_info`, or `summarize_stage`, call `manager.save()`
 - **Messages stay on the manager** — The loop reads/writes `manager.messages` directly rather than owning its own array, so conversation history persists across stage transitions
 - **MCP servers** — `mcpServers` is threaded through from the orchestration layer so documentation lookups continue to work
 
@@ -302,7 +307,16 @@ You are currently discussing the {stageLabel} stage.
 - If this stage is not relevant to the project, explain why and call summarize_stage to skip it.
 ```
 
-The stage-specific instructions can be defined as a map in `stages.ts` alongside the default stage definitions.
+The stage-specific instructions are defined as a map in `stages.ts` alongside the default stage definitions:
+
+```typescript
+const stageInstructions: Record<string, string> = {
+  project_info: 'Ask for the project name and a brief description of what the user is building.',
+  frontend: 'Present 2-3 frontend framework options with trade-offs and your recommendation. Consider the project description when suggesting options.',
+  database: 'Present 2-3 database options with ORM/query layer recommendations. Consider the chosen frontend and backend when suggesting options.',
+  // ... other stages follow the same pattern: 1-2 sentences of focused guidance
+}
+```
 
 ### What Stays the Same
 

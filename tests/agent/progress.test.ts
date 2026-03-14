@@ -3,10 +3,14 @@ import {
   createProgress,
   setDecision,
   clearDecision,
+  clearProjectInfo,
   isComplete,
   serializeProgress,
+  serializeSession,
+  deserializeSession,
 } from '../../src/agent/progress.js'
-import type { ComponentChoice, StackProgress } from '../../src/agent/progress.js'
+import type { ComponentChoice, StackProgress, SavedSession } from '../../src/agent/progress.js'
+import type { StageEntry } from '../../src/agent/stages.js'
 
 describe('createProgress', () => {
   it('returns an empty StackProgress', () => {
@@ -212,5 +216,69 @@ describe('serializeProgress', () => {
   it('returns a multi-line string', () => {
     const output = serializeProgress(createProgress())
     expect(output).toContain('\n')
+  })
+})
+
+describe('clearProjectInfo', () => {
+  it('clears projectName and description', () => {
+    const progress = createProgress()
+    progress.projectName = 'my-app'
+    progress.description = 'A task manager'
+    const cleared = clearProjectInfo(progress)
+    expect(cleared.projectName).toBeNull()
+    expect(cleared.description).toBeNull()
+  })
+
+  it('does not affect other fields', () => {
+    let progress = createProgress()
+    progress.projectName = 'my-app'
+    progress.description = 'A task manager'
+    progress = setDecision(progress, 'frontend', {
+      component: 'Next.js',
+      reasoning: 'Best fit',
+    })
+    const cleared = clearProjectInfo(progress)
+    expect(cleared.frontend).not.toBeNull()
+    expect(cleared.frontend!.component).toBe('Next.js')
+  })
+})
+
+describe('serializeSession / deserializeSession', () => {
+  it('round-trips a session through JSON', () => {
+    const stages: StageEntry[] = [
+      { id: 'project_info', label: 'Project Info', status: 'complete', summary: 'my-app', progressKeys: ['projectName', 'description'] },
+      { id: 'frontend', label: 'Frontend', status: 'pending', progressKeys: ['frontend'] },
+    ]
+    const session: SavedSession = {
+      version: 1,
+      createdAt: '2026-03-14T00:00:00.000Z',
+      updatedAt: '2026-03-14T01:00:00.000Z',
+      progress: createProgress(),
+      stages,
+      messages: [
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there!' },
+      ],
+    }
+
+    const json = serializeSession(session)
+    expect(typeof json).toBe('string')
+
+    const restored = deserializeSession(json)
+    expect(restored).toEqual(session)
+  })
+
+  it('returns null for invalid JSON', () => {
+    expect(deserializeSession('not json')).toBeNull()
+  })
+
+  it('returns null for wrong version', () => {
+    const bad = JSON.stringify({ version: 99, progress: {}, stages: [], messages: [] })
+    expect(deserializeSession(bad)).toBeNull()
+  })
+
+  it('returns null for missing required fields', () => {
+    const bad = JSON.stringify({ version: 1 })
+    expect(deserializeSession(bad)).toBeNull()
   })
 })

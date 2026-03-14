@@ -4,7 +4,7 @@ import type { Tool, MessageParam } from '@anthropic-ai/sdk/resources/messages.js
 export interface ChatOptions {
   system: string
   messages: MessageParam[]
-  tools: Tool[]
+  tools?: Tool[]
   maxTokens: number
   mcpServers?: Record<string, { url: string; apiKey?: string }>
 }
@@ -47,7 +47,7 @@ export async function chat(options: ChatOptions) {
         max_tokens: maxTokens,
         system,
         messages,
-        tools,
+        ...(tools && tools.length > 0 && { tools }),
         mcp_servers: mcpServerList,
       },
       {
@@ -63,7 +63,7 @@ export async function chat(options: ChatOptions) {
     max_tokens: maxTokens,
     system,
     messages,
-    tools,
+    ...(tools && tools.length > 0 && { tools }),
   })
 }
 
@@ -84,7 +84,7 @@ export async function chatStream(
     max_tokens: maxTokens,
     system,
     messages,
-    tools,
+    ...(tools && tools.length > 0 && { tools }),
   })
 
   stream.on('text', (text) => {

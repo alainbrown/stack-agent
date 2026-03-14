@@ -7,14 +7,13 @@ import {
 import { createProgress } from '../../src/agent/progress.js'
 
 describe('conversationToolDefinitions', () => {
-  it('returns all 4 tool names', () => {
+  it('returns all 3 tool names', () => {
     const tools = conversationToolDefinitions()
     const names = tools.map((t) => t.name)
     expect(names).toContain('set_decision')
     expect(names).toContain('set_project_info')
     expect(names).toContain('summarize_stage')
-    expect(names).toContain('present_plan')
-    expect(names).toHaveLength(4)
+    expect(names).toHaveLength(3)
   })
 
   it('all tools have valid input_schema with type object', () => {
@@ -84,7 +83,6 @@ describe('executeConversationTool', () => {
       )
       expect(result.progress.frontend).toEqual({ component: 'React', reasoning: 'Popular' })
       expect(result.response).toBeTruthy()
-      expect(result.signal).toBeUndefined()
     })
 
     it('does not mutate original progress', () => {
@@ -146,7 +144,6 @@ describe('executeConversationTool', () => {
       )
       expect(result.progress.projectName).toBe('MyApp')
       expect(result.progress.description).toBe('A cool app')
-      expect(result.signal).toBeUndefined()
     })
 
     it('does not mutate original progress', () => {
@@ -173,16 +170,6 @@ describe('executeConversationTool', () => {
       )
       expect(result.response).toBe('We chose React for the frontend.')
       expect(result.progress).toBe(progress)
-      expect(result.signal).toBeUndefined()
-    })
-  })
-
-  describe('present_plan', () => {
-    it('returns signal: present_plan', () => {
-      const progress = createProgress()
-      const result = executeConversationTool('present_plan', {}, progress, messages)
-      expect(result.signal).toBe('present_plan')
-      expect(result.progress).toBe(progress)
     })
   })
 
@@ -192,7 +179,6 @@ describe('executeConversationTool', () => {
       const result = executeConversationTool('nonexistent_tool', {}, progress, messages)
       expect(result.response).toMatch(/unknown tool/i)
       expect(result.progress).toBe(progress)
-      expect(result.signal).toBeUndefined()
     })
   })
 })

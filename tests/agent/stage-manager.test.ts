@@ -105,4 +105,187 @@ describe('StageManager', () => {
       expect(manager.stages.find((s) => s.id === 'payments')).toBeUndefined()
     })
   })
+
+  describe('persistence', () => {
+    it('detect returns null when no file exists', () => {
+      expect(StageManager.detect(testDir)).toBeNull()
+    })
+
+    it('save creates a file that detect can read', () => {
+      const manager = StageManager.start(testDir)
+      manager.completeStage('project_info', 'my-app')
+      manager.save()
+
+      const filePath = join(testDir, '.stack-agent.json')
+      expect(existsSync(filePath)).toBe(true)
+
+      const detected = StageManager.detect(testDir)
+      expect(detected).not.toBeNull()
+      expect(detected!.stages[0].status).toBe('complete')
+      expect(detected!.stages[0].summary).toBe('my-app')
+    })
+
+    it('resume restores full state', () => {
+      const manager = StageManager.start(testDir)
+      manager.completeStage('project_info', 'my-app')
+      manager.completeStage('frontend', 'Next.js')
+      manager.save()
+
+      const resumed = StageManager.resume(testDir)
+      expect(resumed).not.toBeNull()
+      expect(resumed!.currentStage()?.id).toBe('backend')
+      expect(resumed!.stages[0].summary).toBe('my-app')
+      expect(resumed!.stages[1].summary).toBe('Next.js')
+    })
+
+    it('resume returns null for corrupt file', () => {
+      const filePath = join(testDir, '.stack-agent.json')
+      writeFileSync(filePath, 'not valid json', 'utf-8')
+      expect(StageManager.resume(testDir)).toBeNull()
+    })
+
+    it('cleanup deletes the session file', () => {
+      const manager = StageManager.start(testDir)
+      manager.save()
+      const filePath = join(testDir, '.stack-agent.json')
+      expect(existsSync(filePath)).toBe(true)
+      manager.cleanup()
+      expect(existsSync(filePath)).toBe(false)
+    })
+  })
+
+  describe('navigateTo and invalidation', () => {
+    it('navigateTo marks a completed stage as pending', () => {
+      const manager = StageManager.start(testDir)
+      manager.completeStage('frontend', 'Next.js')
+      manager.navigateTo('frontend')
+      const stage = manager.stages.find((s) => s.id === 'frontend')!
+      expect(stage.status).toBe('pending')
+    })
+
+    it('restorePendingNavigation restores old decision', () => {
+      const manager = StageManager.start(testDir)
+      manager.progress = {
+        ...manager.progress,
+        frontend: { component: 'Next.js', reasoning: 'Best fit' },
+      }
+      manager.completeStage('frontend', 'Next.js')
+      manager.navigateTo('frontend')
+
+      manager.restorePendingNavigation()
+      const stage = manager.stages.find((s) => s.id === 'frontend')!
+      expect(stage.status).toBe('complete')
+      expect(manager.progress.frontend?.component).toBe('Next.js')
+    })
+
+    it('restorePendingNavigation restores summary', () => {
+      const manager = StageManager.start(testDir)
+      manager.progress = {
+        ...manager.progress,
+        frontend: { component: 'Next.js', reasoning: 'Best fit' },
+      }
+      manager.completeStage('frontend', 'Next.js chosen')
+      manager.navigateTo('frontend')
+
+      const stage = manager.stages.find((s) => s.id === 'frontend')!
+      expect(stage.summary).toBeUndefined() // cleared by navigateTo
+
+      manager.restorePendingNavigation()
+      expect(stage.summary).toBe('Next.js chosen') // restored
+    })
+
+    it('restorePendingNavigation is a no-op when no navigation is pending', () => {
+      const manager = StageManager.start(testDir)
+      manager.restorePendingNavigation()
+      expect(manager.stages[0].status).toBe('pending')
+    })
+
+    it('isNavigating returns false by default, true after navigateTo', () => {
+      const manager = StageManager.start(testDir)
+      expect(manager.isNavigating()).toBe(false)
+      manager.progress = {
+        ...manager.progress,
+        frontend: { component: 'Next.js', reasoning: 'Best fit' },
+      }
+      manager.completeStage('frontend', 'Next.js')
+      manager.navigateTo('frontend')
+      expect(manager.isNavigating()).toBe(true)
+    })
+
+    it('invalidateAfter clears downstream stages', async () => {
+      const mockInvalidate: InvalidationFn = async () => ({
+        clear: ['backend'],
+        add: [],
+        remove: [],
+      })
+      const manager = StageManager.start(testDir, mockInvalidate)
+      manager.completeStage('project_info', 'Done')
+      manager.completeStage('frontend', 'Next.js')
+      manager.progress = {
+        ...manager.progress,
+        backend: { component: 'Express', reasoning: 'Flexible' },
+      }
+      manager.completeStage('backend', 'Express')
+
+      const oldFrontend = { component: 'Next.js', reasoning: 'Best fit' }
+      await manager.invalidateAfter('frontend', oldFrontend)
+
+      const backend = manager.stages.find((s) => s.id === 'backend')!
+      expect(backend.status).toBe('pending')
+      expect(manager.progress.backend).toBeNull()
+    })
+
+    it('invalidateAfter does not clear upstream stages (guardrail)', async () => {
+      const mockInvalidate: InvalidationFn = async () => ({
+        clear: ['project_info'],
+        add: [],
+        remove: [],
+      })
+      const manager = StageManager.start(testDir, mockInvalidate)
+      manager.completeStage('project_info', 'Done')
+      manager.completeStage('frontend', 'Next.js')
+
+      await manager.invalidateAfter('frontend', null)
+
+      const pi = manager.stages.find((s) => s.id === 'project_info')!
+      expect(pi.status).toBe('complete')
+    })
+
+    it('invalidateAfter removes downstream stages', async () => {
+      const mockInvalidate: InvalidationFn = async () => ({
+        clear: [],
+        add: [],
+        remove: ['payments'],
+      })
+      const manager = StageManager.start(testDir, mockInvalidate)
+      manager.completeStage('project_info', 'Done')
+      manager.completeStage('frontend', 'Static HTML')
+
+      await manager.invalidateAfter('frontend', null)
+
+      expect(manager.stages.find((s) => s.id === 'payments')).toBeUndefined()
+    })
+
+    it('invalidateAfter adds new stages in order after the changed stage', async () => {
+      const mockInvalidate: InvalidationFn = async () => ({
+        clear: [],
+        add: [
+          { id: 'cms', label: 'CMS', status: 'pending' as const, progressKeys: ['extras'] },
+          { id: 'search', label: 'Search', status: 'pending' as const, progressKeys: ['extras'] },
+        ],
+        remove: [],
+      })
+      const manager = StageManager.start(testDir, mockInvalidate)
+      manager.completeStage('project_info', 'Done')
+      manager.completeStage('frontend', 'Astro')
+
+      await manager.invalidateAfter('frontend', null)
+
+      const ids = manager.stages.map((s) => s.id)
+      expect(ids).toContain('cms')
+      expect(ids).toContain('search')
+      expect(ids.indexOf('cms')).toBe(ids.indexOf('frontend') + 1)
+      expect(ids.indexOf('search')).toBe(ids.indexOf('cms') + 1)
+    })
+  })
 })

@@ -37,7 +37,7 @@ export async function runConversationLoop(
   const messages: Message[] = []
 
   // Get initial user input
-  const initialInput = await getUserInput('Describe what you want to build...')
+  const initialInput = await getUserInput('What are you building?', 'A SaaS platform for...')
   if (initialInput === null) return null
 
   messages.push({ role: 'user', content: initialInput })
@@ -147,7 +147,7 @@ export async function runConversationLoop(
     }
 
     // No tool use blocks - just text. Get user input to continue conversation.
-    const userInput = await getUserInput()
+    const userInput = await getUserInput('Your response')
     if (userInput === null) return null
 
     // Push assistant message (text only)

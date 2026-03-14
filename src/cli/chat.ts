@@ -28,9 +28,9 @@ export function renderPlan(plan: string): void {
   p.log.info(plan)
 }
 
-export async function getUserInput(placeholder?: string): Promise<string | null> {
+export async function getUserInput(message?: string, placeholder?: string): Promise<string | null> {
   const result = await p.text({
-    message: '',
+    message: message ?? '›',
     placeholder: placeholder ?? 'Type your message...',
   })
 

@@ -196,7 +196,7 @@ export async function runScaffoldLoop(
       system,
       messages: messages as MessageParam[],
       tools: scaffoldToolDefinitions(),
-      maxTokens: 4096,
+      maxTokens: 16384,
       mcpServers,
     })
 

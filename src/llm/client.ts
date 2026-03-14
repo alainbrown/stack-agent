@@ -1,41 +1,108 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { Tool } from '@anthropic-ai/sdk/resources/messages.js'
 
-let client: Anthropic | null = null
-
-function getClient(): Anthropic {
-  if (client) return client
-
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    console.error(
-      'Error: ANTHROPIC_API_KEY environment variable is not set.\n' +
-      'Get your API key at https://console.anthropic.com/settings/keys\n' +
-      'Then run: export ANTHROPIC_API_KEY=your-key-here'
-    )
-    process.exit(1)
-  }
-
-  client = new Anthropic({ apiKey })
-  return client
+export interface ChatOptions {
+  system: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string | object[] }>
+  tools: Tool[]
+  maxTokens: number
+  mcpServers?: Record<string, { url: string; apiKey?: string }>
 }
 
-export async function callClaude(
-  systemPrompt: string,
-  userMessage: string,
-): Promise<string> {
-  const anthropic = getClient()
+function getClient(): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    throw new Error(
+      'ANTHROPIC_API_KEY environment variable is not set. Please set it before running create-stack.',
+    )
+  }
+  return new Anthropic({ apiKey })
+}
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6-20250514',
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
-  })
+let _client: Anthropic | null = null
 
-  const textBlock = response.content.find((block) => block.type === 'text')
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('No text response from Claude')
+function client(): Anthropic {
+  if (!_client) {
+    _client = getClient()
+  }
+  return _client
+}
+
+export async function chat(options: ChatOptions) {
+  const { system, messages, tools, maxTokens, mcpServers } = options
+
+  if (mcpServers && Object.keys(mcpServers).length > 0) {
+    const mcpServerList = Object.entries(mcpServers).map(([name, config]) => ({
+      type: 'url' as const,
+      name,
+      url: config.url,
+      ...(config.apiKey !== undefined && {
+        authorization_token: config.apiKey,
+      }),
+    }))
+
+    return client().beta.messages.create(
+      {
+        model: 'claude-sonnet-4-6',
+        max_tokens: maxTokens,
+        system,
+        // @ts-expect-error: mcp_servers is a beta param not yet in SDK types
+        messages,
+        tools,
+        mcp_servers: mcpServerList,
+      },
+      {
+        headers: {
+          'anthropic-beta': 'mcp-client-2025-11-20',
+        },
+      },
+    )
   }
 
-  return textBlock.text
+  return client().messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: maxTokens,
+    system,
+    messages,
+    tools,
+  })
+}
+
+export interface StreamCallbacks {
+  onText: (delta: string) => void
+  onToolUse: (block: { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }) => void
+  onComplete: (response: { content: object[]; stop_reason: string }) => void
+}
+
+export async function chatStream(
+  options: ChatOptions,
+  callbacks: StreamCallbacks,
+): Promise<void> {
+  const { system, messages, tools, maxTokens } = options
+
+  const stream = client().messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: maxTokens,
+    system,
+    messages,
+    tools,
+  })
+
+  stream.on('text', (text) => {
+    callbacks.onText(text)
+  })
+
+  const finalMessage = await stream.finalMessage()
+
+  // Report tool_use blocks
+  for (const block of finalMessage.content) {
+    if (block.type === 'tool_use') {
+      callbacks.onToolUse(block as { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> })
+    }
+  }
+
+  callbacks.onComplete({
+    content: finalMessage.content as object[],
+    stop_reason: finalMessage.stop_reason,
+  })
 }

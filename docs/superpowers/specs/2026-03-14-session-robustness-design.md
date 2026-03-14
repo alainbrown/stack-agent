@@ -58,10 +58,27 @@ project_info → frontend → backend → database → auth → payments → ai 
 
 Progress is saved after any tool execution batch that includes `set_decision`, `set_project_info`, or `summarize_stage`. The save is a synchronous `writeFileSync` of the serialized session.
 
+### Clearing Progress Keys
+
+When a stage is invalidated, its `progressKeys` determine what to clear on `StackProgress`:
+
+- **`string | null` fields** (`projectName`, `description`, category fields like `frontend`): set to `null`
+- **`ComponentChoice[]` fields** (`extras`): reset to `[]`
+
+This aligns with the existing `clearDecision` function in `progress.ts`, which handles `ProgressCategory` fields. A new `clearProjectInfo` helper will handle `projectName` and `description`. The `project_info` stage maps to `progressKeys: ['projectName', 'description']`; all other stages map to their single category key (e.g., `progressKeys: ['frontend']`).
+
 ### Cleanup
 
 - Delete `.stack-agent.json` after successful scaffold completion
 - Delete `.stack-agent.json` when user chooses "start fresh" at the resume prompt
+
+### Error Handling
+
+- **Corrupt session file**: If `.stack-agent.json` fails to parse (invalid JSON, wrong version, missing required fields), treat it as absent — offer "start fresh" with a warning that the previous session could not be restored.
+- **Version mismatch**: If `version` does not match the current expected version, treat as corrupt (same behavior as above).
+- **Atomic writes**: `save()` writes to `.stack-agent.json.tmp` first, then renames to `.stack-agent.json`. This prevents corruption from partial writes or SIGINT during save.
+- **SIGINT handling**: Register a handler that completes any in-progress save before exiting. If no save is in-progress, exit immediately.
+- **Save failures**: If `save()` fails (disk full, permissions), log a warning but do not crash. The session continues in-memory; the user loses resume capability but not their current session.
 
 ---
 
@@ -70,13 +87,30 @@ Progress is saved after any tool execution batch that includes `set_decision`, `
 The `StageManager` is the orchestrator — it owns the stage list, drives transitions, and handles persistence.
 
 ```typescript
+interface InvalidationResult {
+  clear: string[]         // stage IDs whose decisions are now invalid
+  add: StageEntry[]       // new stages to introduce
+  remove: string[]        // stage IDs no longer relevant
+}
+
+// Callback type — the orchestration layer provides this, keeping LLM
+// concerns out of StageManager's core logic.
+type InvalidationFn = (
+  changedId: string,
+  oldValue: ComponentChoice | null,
+  newValue: ComponentChoice | null,
+  progress: StackProgress,
+  stages: StageEntry[],
+) => Promise<InvalidationResult>
+
 class StageManager {
   private session: SavedSession
-  private filePath: string          // path to .stack-agent.json
+  private filePath: string                  // path to .stack-agent.json
+  private onInvalidate?: InvalidationFn     // injected by orchestration layer
 
   // Lifecycle
-  static start(cwd: string): StageManager          // fresh session
-  static resume(cwd: string): StageManager          // load from file
+  static start(cwd: string, onInvalidate?: InvalidationFn): StageManager
+  static resume(cwd: string, onInvalidate?: InvalidationFn): StageManager
   static detect(cwd: string): SavedSession | null   // check if file exists
 
   // Stage navigation
@@ -84,6 +118,7 @@ class StageManager {
   completeStage(id: string, summary: string): void
   skipStage(id: string): void
   navigateTo(id: string): void            // user selected from stage list
+                                          // preserves old decision until new one confirmed
 
   // Dynamic stages (LLM-driven)
   addStage(entry: StageEntry, afterId: string): void
@@ -91,11 +126,11 @@ class StageManager {
 
   // Cascading invalidation
   async invalidateAfter(changedId: string): Promise<void>
-  // Asks LLM which downstream stages are affected by a decision change.
-  // Clears progress keys + resets status for affected stages.
+  // Calls this.onInvalidate (if provided) to determine which downstream
+  // stages are affected. Clears progress keys + resets status for affected stages.
 
   // Persistence
-  save(): void                            // write to .stack-agent.json
+  save(): void                            // atomic write to .stack-agent.json
   cleanup(): void                         // delete the file
 
   // Accessors
@@ -104,6 +139,8 @@ class StageManager {
   get stages(): StageEntry[]
 }
 ```
+
+The `InvalidationFn` is provided by `index.ts` which has access to the LLM client. This keeps `StageManager` testable without LLM dependencies — in tests, provide a mock function or omit it entirely.
 
 ### Orchestration Flow (index.ts)
 
@@ -122,7 +159,7 @@ class StageManager {
 
 ### Key Principle
 
-The `StageManager` never talks to Claude directly, except for `invalidateAfter`. It manages state and flow; the conversation loop manages the LLM interaction.
+The `StageManager` never talks to Claude directly. The LLM call for invalidation is injected via `InvalidationFn`, keeping the class testable and free of LLM client dependencies. It manages state and flow; the conversation loop manages the LLM interaction.
 
 ---
 
@@ -139,7 +176,7 @@ type InputResult =
   | { kind: 'navigate' }     // left arrow pressed
 ```
 
-Since `@clack/prompts` text input doesn't natively support arrow key interception, a custom raw keypress listener is needed that intercepts left arrow before the text input activates, or a custom input handler wrapping the terminal.
+**Implementation approach:** Since `@clack/prompts` text input captures all keystrokes internally, we use a two-phase input handler: before activating the clack text prompt, briefly listen on `process.stdin` in raw mode for the left-arrow escape sequence (`\x1b[D`). If detected, return `{ kind: 'navigate' }` without ever entering the text prompt. If any other key is pressed, stop raw listening and delegate to clack's `text()` prompt with the initial keystroke buffered. This avoids forking clack while keeping the UX seamless.
 
 ### Stage List UI
 
@@ -162,7 +199,7 @@ Rendered using `@clack/prompts` select when the user presses left arrow:
 
 - **✓** completed — selectable, takes you back to modify that decision
 - **●** current — selectable, returns to where you were
-- **○** pending — not selectable (must proceed in order or skip)
+- **○** pending — selectable (allows jumping ahead if the user wants to discuss a later topic first; the stage loop scoping handles this naturally)
 - **★** Review & Build — selectable once `isComplete(progress)` returns true
 
 ### Review Screen
@@ -207,18 +244,65 @@ type StageLoopResult =
 async function runStageLoop(
   stage: StageEntry,
   manager: StageManager,
+  mcpServers?: Record<string, { url: string; apiKey?: string }>,
 ): Promise<StageLoopResult>
 ```
 
+### Stage Completion Detection
+
+The stage loop determines completion by checking tool results after each batch:
+
+- **For `project_info` stage**: Complete when a tool batch includes `set_project_info` followed by `summarize_stage`.
+- **For category stages** (`frontend`, `backend`, etc.): Complete when a tool batch includes `set_decision` for this stage's category. The loop checks `toolBlock.input.category === stage.id` after executing the tool.
+- **For `extras` stage**: Complete only via `summarize_stage` (since extras can have zero or many decisions). The `extras` stage is the only stage where `set_decision` does not trigger completion — it just appends to the array.
+- **For skipping**: If Claude calls `summarize_stage` without having called `set_decision` for this stage in the current or any prior batch, the stage is skipped.
+
+The existing `ConversationToolResult.signal` field is extended:
+
+```typescript
+export interface ConversationToolResult {
+  progress: StackProgress
+  response: string
+  signal?: 'present_plan' | 'stage_complete' | 'stage_skipped'
+}
+```
+
+### The `present_plan` Tool
+
+The `present_plan` tool is **removed** from `conversationToolDefinitions()`. Its purpose (signaling that all decisions are made) is now handled by the `StageManager`: when `currentStage()` returns `null`, the orchestration loop shows the review screen. The tool definition and its handler in `executeConversationTool` are deleted.
+
 ### What Changes From the Current Loop
 
-- **Scoped system prompt** — `buildConversationPrompt` receives the current stage ID so Claude knows which topic to focus on, plus the full progress for context
-- **Exit conditions** — The loop ends when:
-  - Claude calls `set_decision` for this stage's category → `complete`
-  - User presses left arrow → `navigate`
-  - Claude calls `summarize_stage` without a decision for optional stages it deems irrelevant → `skipped`
+- **Scoped system prompt** — `buildConversationPrompt` receives the current stage ID so Claude knows which topic to focus on, plus the full progress for context (see Per-Stage Prompt Structure below)
+- **Exit conditions** — The loop ends based on the stage completion detection rules above
 - **Save on progress change** — After processing a tool batch that includes `set_decision` or `set_project_info`, call `manager.save()`
 - **Messages stay on the manager** — The loop reads/writes `manager.messages` directly rather than owning its own array, so conversation history persists across stage transitions
+- **MCP servers** — `mcpServers` is threaded through from the orchestration layer so documentation lookups continue to work
+
+### Per-Stage Prompt Structure
+
+`buildConversationPrompt(progress, stageId)` produces a system prompt scoped to the active stage:
+
+```
+You are a senior software architect helping the user build a new project.
+
+## Current Progress
+{serializeProgress(progress)}
+
+## Current Stage: {stageLabel}
+You are currently discussing the {stageLabel} stage.
+{stage-specific instructions — e.g., "Present 2-3 frontend framework options with trade-offs and your recommendation."}
+
+## Context from Previous Stages
+{summaries from completed stages, if any}
+
+## Guidelines
+- Focus on {stageLabel}. Do not discuss other undecided stages.
+- When the user has made their choice, commit it with set_decision and summarize with summarize_stage.
+- If this stage is not relevant to the project, explain why and call summarize_stage to skip it.
+```
+
+The stage-specific instructions can be defined as a map in `stages.ts` alongside the default stage definitions.
 
 ### What Stays the Same
 
@@ -235,7 +319,7 @@ When a user navigates back and changes a decision, other decisions may no longer
 
 ### Trigger
 
-User selects a completed stage from the stage list → `manager.navigateTo(id)`. Before re-entering the stage loop, mark that stage as `pending` and clear its progress keys.
+User selects a completed stage from the stage list → `manager.navigateTo(id)`. The old decision value is **preserved** until the stage loop returns with `outcome: 'complete'`. If the user cancels or navigates away before making a new decision, the original decision is restored. Only once a new decision is confirmed does the old value get replaced and `invalidateAfter` fire.
 
 ### After the Decision Changes
 
@@ -270,9 +354,10 @@ async invalidateAfter(changedId: string): Promise<void> {
 Include 2-3 examples to calibrate conservatism:
 
 ```
-Example 1: Changed frontend from Next.js → Astro
+Example 1: Changed frontend from Next.js → Astro (backend was "Next.js API routes")
 → { "clear": ["backend"], "add": [], "remove": [] }
-Reason: Next.js included API routes; Astro needs an explicit backend decision.
+Reason: Backend decision was "Next.js API routes" which is tied to Next.js. Astro needs a separate backend.
+Note: If backend had been "Express" (independent of frontend), it would NOT be cleared.
 
 Example 2: Changed auth from Clerk → Auth.js
 → { "clear": [], "add": [], "remove": [] }
@@ -325,6 +410,10 @@ This is a single small API call with a focused prompt — no tool use, no stream
 
 On resume, the saved `messages` array is loaded back. Since `summarize_stage` has already compressed completed stages, the context is compact. Claude receives the full message history plus the system prompt with current progress — it picks up naturally.
 
+### Messages Serialization
+
+The Anthropic SDK's `MessageParam` type is a plain object (no class instances, symbols, or functions), so it round-trips through `JSON.stringify`/`JSON.parse` faithfully. As a safety measure, add a size check after serialization — if the session exceeds 500KB, log a warning. In practice, summarized conversations should be well under this threshold.
+
 ### Stale Sessions
 
 No automatic expiry. The timestamp is displayed so the user can judge freshness. A week-old session still works — decisions are decisions regardless of age.
@@ -366,3 +455,28 @@ index.ts (entry)
   │
   └── runScaffoldLoop(progress) [unchanged]
 ```
+
+---
+
+## Testing Strategy
+
+The codebase currently has zero tests. This feature introduces stateful persistence and a state machine, both of which are highly testable without LLM calls.
+
+### Unit Tests (vitest)
+
+| Test Suite | What It Covers |
+|------------|----------------|
+| `stage-manager.test.ts` | State transitions: `completeStage`, `skipStage`, `navigateTo` (with old-value preservation), `addStage`, `removeStage`, `currentStage` ordering |
+| `stage-manager.test.ts` | Persistence: `save`/`resume` round-trip, atomic write behavior, corrupt file handling, version mismatch |
+| `stage-manager.test.ts` | Invalidation: mock `InvalidationFn` returns, verify correct stages are cleared/added/removed, verify guardrail (only downstream stages affected) |
+| `progress.test.ts` | Existing `clearDecision` + new `clearProjectInfo`, field-type-specific clearing logic |
+| `stages.test.ts` | Default stage definitions, `progressKeys` mapping correctness |
+
+### Integration Tests
+
+| Test | What It Covers |
+|------|----------------|
+| Save/resume lifecycle | Create session → make decisions → save → load from file → verify state matches |
+| Navigation round-trip | Complete stages → navigate back → verify old decision preserved → complete with new decision → verify invalidation called |
+
+LLM-dependent behavior (`invalidateAfter` content quality, per-stage prompts) is best validated through manual testing and prompt iteration, not automated tests.

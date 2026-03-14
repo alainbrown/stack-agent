@@ -2,9 +2,7 @@ import { join } from 'node:path'
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
 import { chat, chatStream } from '../llm/client.js'
 import {
-  renderAgentMessage,
   getUserInput,
-  renderPlan,
   renderError,
   createSpinner,
   writeText,
@@ -20,26 +18,38 @@ import {
   buildScaffoldPrompt,
 } from './system-prompt.js'
 import {
-  createProgress,
   serializeProgress,
   type StackProgress,
 } from './progress.js'
+import type { StageEntry } from './stages.js'
+import type { StageManager } from './stage-manager.js'
 import { runScaffold } from '../scaffold/base.js'
 import { writeIntegration } from '../scaffold/integrate.js'
 
-export async function runConversationLoop(
-  mcpServers?: Record<string, { url: string; apiKey?: string }>,
-): Promise<StackProgress | null> {
-  let progress = createProgress()
-  const messages: MessageParam[] = []
+export type StageLoopResult =
+  | { outcome: 'complete'; summary: string }
+  | { outcome: 'skipped' }
+  | { outcome: 'navigate' }
+  | { outcome: 'cancel' }
 
-  // Kick off the conversation — Claude will ask for project name first
-  messages.push({ role: 'user', content: 'I want to start a new project.' })
+export async function runStageLoop(
+  stage: StageEntry,
+  manager: StageManager,
+  mcpServers?: Record<string, { url: string; apiKey?: string }>,
+): Promise<StageLoopResult> {
+  const messages = manager.messages
+  let progress = manager.progress
+
+  // Kick off the conversation if this is the first stage
+  if (messages.length === 0) {
+    messages.push({ role: 'user', content: 'I want to start a new project.' })
+  }
+
+  let hasCalledSetDecision = false
 
   while (true) {
-    const system = buildConversationPrompt(progress)
+    const system = buildConversationPrompt(progress, stage.id, manager.stages)
 
-    // Stream the response — text deltas render in real-time
     let contentBlocks: object[] = []
     const collectedToolUse: Array<{ type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }> = []
     let hasText = false
@@ -47,7 +57,7 @@ export async function runConversationLoop(
     await chatStream(
       {
         system,
-        messages: messages,
+        messages,
         tools: conversationToolDefinitions(),
         maxTokens: 4096,
         mcpServers,
@@ -77,14 +87,12 @@ export async function runConversationLoop(
     const toolUseBlocks = collectedToolUse
 
     if (toolUseBlocks.length > 0) {
-      // CRITICAL: Push ALL content blocks as a SINGLE assistant message
       messages.push({ role: 'assistant', content: contentBlocks as MessageParam['content'] })
 
-      // Execute all tools and collect results
       const toolResults: object[] = []
-      let hasPresentPlan = false
       let hasSummarizeStage = false
       let summarizeSummary = ''
+      let madeDecision = false
 
       for (const block of toolUseBlocks) {
         const toolBlock = block as {
@@ -102,6 +110,7 @@ export async function runConversationLoop(
         )
 
         progress = result.progress
+        manager.progress = progress
 
         toolResults.push({
           type: 'tool_result',
@@ -109,8 +118,9 @@ export async function runConversationLoop(
           content: result.response,
         })
 
-        if (result.signal === 'present_plan') {
-          hasPresentPlan = true
+        if (toolBlock.name === 'set_decision' || toolBlock.name === 'set_project_info') {
+          madeDecision = true
+          hasCalledSetDecision = true
         }
 
         if (toolBlock.name === 'summarize_stage') {
@@ -119,51 +129,49 @@ export async function runConversationLoop(
         }
       }
 
-      // CRITICAL: Push ALL tool_result blocks as a SINGLE user message
       messages.push({ role: 'user', content: toolResults as MessageParam['content'] })
 
-      // Handle summarize_stage: replace earlier conversation messages with summary
+      // Save if progress changed
+      if (madeDecision || hasSummarizeStage) {
+        manager.save()
+      }
+
+      // Handle summarize_stage: compress messages
       if (hasSummarizeStage) {
-        // Keep the system message context, but replace the conversation
-        // turns before the last assistant+user pair with a concise summary.
-        // The last two messages are: assistant (with tool calls) + user (with tool results)
-        // We replace everything before those with the summary.
         const lastAssistant = messages[messages.length - 2]
         const lastUser = messages[messages.length - 1]
 
         messages.length = 0
-        messages.push({
-          role: 'assistant',
-          content: summarizeSummary,
-        })
-        messages.push({
-          role: 'user',
-          content: '[Continuing]',
-        })
+        messages.push({ role: 'assistant', content: summarizeSummary })
+        messages.push({ role: 'user', content: '[Continuing]' })
         messages.push(lastAssistant)
         messages.push(lastUser)
+
+        manager.messages = messages
       }
 
-      // Handle present_plan signal
-      if (hasPresentPlan) {
-        renderPlan(serializeProgress(progress))
-        return progress
+      // Check stage completion
+      if (hasSummarizeStage) {
+        if (hasCalledSetDecision || stage.id === 'project_info') {
+          return { outcome: 'complete', summary: summarizeSummary }
+        }
+        return { outcome: 'skipped' }
       }
 
-      // Continue the loop - Claude may want to send more messages
       continue
     }
 
-    // No tool use blocks - just text. Get user input to continue conversation.
-    const userInput = await getUserInput('Your response')
-    if (userInput === null) return null
+    // No tool use — get user input
+    const inputResult = await getUserInput('Your response')
 
-    // Push assistant message (text only)
+    if (inputResult.kind === 'cancel') return { outcome: 'cancel' }
+    if (inputResult.kind === 'navigate') return { outcome: 'navigate' }
+
     messages.push({
       role: 'assistant',
       content: contentBlocks as MessageParam['content'],
     })
-    messages.push({ role: 'user', content: userInput })
+    messages.push({ role: 'user', content: inputResult.value })
   }
 }
 

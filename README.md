@@ -1,5 +1,10 @@
 # stack-agent
 
+[![npm version](https://img.shields.io/npm/v/stack-agent)](https://www.npmjs.com/package/stack-agent)
+[![CI](https://github.com/alainbrown/stack-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/alainbrown/stack-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/node/v/stack-agent)](https://nodejs.org)
+
 AI-powered CLI that helps developers choose and scaffold full-stack applications through conversational interaction.
 
 A senior software architect in your terminal — it walks you through stack decisions, explains trade-offs, and scaffolds your project using official framework tools.

@@ -150,3 +150,64 @@ export function normalizePlatform(deploymentComponent: string): PlatformConfig {
   }
   return FALLBACK_CONFIG
 }
+
+// Note: `which` is Unix-only. This tool targets Unix-like systems (deploy scripts use bash).
+function isCliInstalled(binary: string): boolean {
+  try {
+    execFileSync('which', [binary], { stdio: 'pipe', timeout: 5000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function checkAuth(cmd: string[]): boolean | null {
+  if (cmd.length === 0) return null
+  try {
+    execFileSync(cmd[0], cmd.slice(1), { stdio: 'pipe', timeout: 5000 })
+    return true
+  } catch (err: unknown) {
+    const nodeErr = err as NodeJS.ErrnoException
+    if (nodeErr.code === 'ENOENT' || nodeErr.code === 'ETIMEDOUT') {
+      // Binary not found or command timed out = indeterminate
+      return null
+    }
+    // Non-zero exit or other failure = auth check failed
+    return false
+  }
+}
+
+export function checkDeployReadiness(deploymentComponent: string): ReadinessResult {
+  const config = normalizePlatform(deploymentComponent)
+
+  if (config.platform === 'Unknown' || config.cliBinary === '') {
+    return {
+      platform: config.platform,
+      cliInstalled: false,
+      cliName: config.cliName,
+      authenticated: null,
+      installCmd: config.installCmd,
+      authCmd: config.authCmd,
+      deployCmd: config.deployCmd,
+      envVarCmd: config.envVarCmd,
+    }
+  }
+
+  const cliInstalled = isCliInstalled(config.cliBinary)
+
+  let authenticated: boolean | null = null
+  if (cliInstalled) {
+    authenticated = checkAuth(config.authCheckCmd)
+  }
+
+  return {
+    platform: config.platform,
+    cliInstalled,
+    cliName: config.cliName,
+    authenticated,
+    installCmd: config.installCmd,
+    authCmd: config.authCmd,
+    deployCmd: config.deployCmd,
+    envVarCmd: config.envVarCmd,
+  }
+}

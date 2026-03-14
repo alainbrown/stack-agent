@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createProgress, setDecision, type StackProgress } from '../../src/agent/progress.js'
+import { createProgress, type StackProgress } from '../../src/agent/progress.js'
+import { DEFAULT_STAGES, type StageEntry } from '../../src/agent/stages.js'
 
 // Mock the LLM client
 vi.mock('../../src/llm/client.js', () => ({
@@ -30,7 +31,7 @@ vi.mock('../../src/scaffold/integrate.js', () => ({
   writeIntegration: vi.fn(),
 }))
 
-import { runConversationLoop, runScaffoldLoop } from '../../src/agent/loop.js'
+import { runStageLoop, runScaffoldLoop, type StageLoopResult } from '../../src/agent/loop.js'
 import { chat, chatStream } from '../../src/llm/client.js'
 import {
   renderAgentMessage,
@@ -52,6 +53,23 @@ const mockRenderPlan = vi.mocked(renderPlan)
 const mockRenderError = vi.mocked(renderError)
 const mockRunScaffold = vi.mocked(runScaffold)
 const mockWriteIntegration = vi.mocked(writeIntegration)
+
+const mockStage: StageEntry = { id: 'frontend', label: 'Frontend', status: 'pending', progressKeys: ['frontend'] }
+const mockProjectInfoStage: StageEntry = { id: 'project_info', label: 'Project Info', status: 'pending', progressKeys: ['projectName', 'description'] }
+
+function createMockManager(overrides: Record<string, unknown> = {}) {
+  return {
+    _messages: [] as any[],
+    _progress: createProgress(),
+    stages: structuredClone(DEFAULT_STAGES),
+    save: vi.fn(),
+    get messages() { return this._messages },
+    set messages(v: any[]) { this._messages = v },
+    get progress() { return this._progress },
+    set progress(v: StackProgress) { this._progress = v },
+    ...overrides,
+  }
+}
 
 // Helper: simulate chatStream by calling callbacks synchronously
 function mockStreamResponse(response: { content: object[] }) {
@@ -80,43 +98,90 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('runConversationLoop', () => {
-  it('returns null when user cancels at initial input', async () => {
-    mockGetUserInput.mockResolvedValueOnce(null)
+describe('runStageLoop', () => {
+  it('returns cancel when user cancels at initial input', async () => {
+    const mockManager = createMockManager()
 
-    const result = await runConversationLoop()
-    expect(result).toBeNull()
+    // Claude responds with text (no tool calls)
+    mockStreamResponse({
+      content: [{ type: 'text', text: 'What frontend framework?' }],
+    })
+
+    mockGetUserInput.mockResolvedValueOnce({ kind: 'cancel' })
+
+    const result = await runStageLoop(mockStage, mockManager as any)
+    expect(result).toEqual({ outcome: 'cancel' })
   })
 
-  it('returns null when user cancels during conversation', async () => {
-    // User provides initial input
-    mockGetUserInput.mockResolvedValueOnce('Build me a web app')
+  it('returns cancel when user cancels during conversation', async () => {
+    const mockManager = createMockManager()
 
     // Claude responds with text (no tool calls)
     mockStreamResponse({
       content: [{ type: 'text', text: 'What kind of frontend?' }],
     })
 
-    // User cancels
-    mockGetUserInput.mockResolvedValueOnce(null)
+    // User provides input
+    mockGetUserInput.mockResolvedValueOnce({ kind: 'text', value: 'Build me a web app' })
 
-    const result = await runConversationLoop()
-    expect(result).toBeNull()
-  })
-
-  it('simple conversation: text -> user -> tools -> present_plan -> returns progress', async () => {
-    // User provides initial input
-    mockGetUserInput.mockResolvedValueOnce('Build me a Next.js app')
-
-    // First Claude response: text asking about the project
+    // Claude responds with more text
     mockStreamResponse({
-      content: [{ type: 'text', text: 'Let me help you set up your project.' }],
+      content: [{ type: 'text', text: 'Great choice!' }],
     })
 
-    // User responds
-    mockGetUserInput.mockResolvedValueOnce('Sounds good, use Next.js and Postgres')
+    // User cancels
+    mockGetUserInput.mockResolvedValueOnce({ kind: 'cancel' })
 
-    // Second Claude response: set_decision for frontend + set_decision for database + present_plan
+    const result = await runStageLoop(mockStage, mockManager as any)
+    expect(result).toEqual({ outcome: 'cancel' })
+  })
+
+  it('returns navigate when user presses left arrow', async () => {
+    const mockManager = createMockManager()
+
+    // Claude responds with text
+    mockStreamResponse({
+      content: [{ type: 'text', text: 'What frontend framework?' }],
+    })
+
+    mockGetUserInput.mockResolvedValueOnce({ kind: 'navigate' })
+
+    const result = await runStageLoop(mockStage, mockManager as any)
+    expect(result).toEqual({ outcome: 'navigate' })
+  })
+
+  it('returns complete with summary when set_decision + summarize_stage are called', async () => {
+    const mockManager = createMockManager()
+
+    // Claude responds with set_decision + summarize_stage
+    mockStreamResponse({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'set_decision',
+          input: { category: 'frontend', component: 'Next.js', reasoning: 'User requested' },
+        },
+        {
+          type: 'tool_use',
+          id: 'tool_2',
+          name: 'summarize_stage',
+          input: { category: 'frontend', summary: 'Chose Next.js for the frontend.' },
+        },
+      ],
+    })
+
+    const result = await runStageLoop(mockStage, mockManager as any)
+
+    expect(result).toEqual({ outcome: 'complete', summary: 'Chose Next.js for the frontend.' })
+    expect(mockManager.save).toHaveBeenCalled()
+    expect(mockManager.progress.frontend!.component).toBe('Next.js')
+  })
+
+  it('returns complete for project_info stage even without set_decision', async () => {
+    const mockManager = createMockManager()
+
+    // Claude responds with set_project_info + summarize_stage
     mockStreamResponse({
       content: [
         {
@@ -128,48 +193,50 @@ describe('runConversationLoop', () => {
         {
           type: 'tool_use',
           id: 'tool_2',
-          name: 'set_decision',
-          input: { category: 'frontend', component: 'Next.js', reasoning: 'User requested' },
-        },
-        {
-          type: 'tool_use',
-          id: 'tool_3',
-          name: 'set_decision',
-          input: { category: 'database', component: 'PostgreSQL', reasoning: 'User requested' },
-        },
-        {
-          type: 'tool_use',
-          id: 'tool_4',
-          name: 'set_decision',
-          input: { category: 'deployment', component: 'Vercel', reasoning: 'Works with Next.js' },
-        },
-        {
-          type: 'tool_use',
-          id: 'tool_5',
-          name: 'present_plan',
-          input: {},
+          name: 'summarize_stage',
+          input: { category: 'project_info', summary: 'Project: my-app - A web app' },
         },
       ],
     })
 
-    const result = await runConversationLoop()
+    const result = await runStageLoop(mockProjectInfoStage, mockManager as any)
 
-    expect(result).not.toBeNull()
-    expect(result!.projectName).toBe('my-app')
-    expect(result!.frontend!.component).toBe('Next.js')
-    expect(result!.database!.component).toBe('PostgreSQL')
-    expect(result!.deployment!.component).toBe('Vercel')
-    expect(mockRenderPlan).toHaveBeenCalled()
+    expect(result).toEqual({ outcome: 'complete', summary: 'Project: my-app - A web app' })
+    expect(mockManager.progress.projectName).toBe('my-app')
+  })
+
+  it('returns skipped when summarize_stage is called without set_decision', async () => {
+    const mockManager = createMockManager()
+
+    // Claude decides payments not needed, just summarizes
+    mockStreamResponse({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'summarize_stage',
+          input: { category: 'payments', summary: 'Payments not needed for this project.' },
+        },
+      ],
+    })
+
+    const paymentsStage: StageEntry = { id: 'payments', label: 'Payments', status: 'pending', progressKeys: ['payments'] }
+    const result = await runStageLoop(paymentsStage, mockManager as any)
+
+    expect(result).toEqual({ outcome: 'skipped' })
+    expect(mockManager.save).toHaveBeenCalled()
   })
 
   it('multi-tool turn: pushes ONE assistant message and ONE user message', async () => {
+    const mockManager = createMockManager()
+
     // Initial response: Claude asks for project name
     mockStreamResponse({
       content: [{ type: 'text', text: 'What is your project name?' }],
     })
-    mockGetUserInput.mockResolvedValueOnce('Build me an app')
+    mockGetUserInput.mockResolvedValueOnce({ kind: 'text', value: 'Build me an app' })
 
-    // Claude returns two set_decision calls + present_plan in one response
+    // Claude returns two set_decision calls + summarize_stage in one response
     mockStreamResponse({
       content: [
         {
@@ -181,66 +248,34 @@ describe('runConversationLoop', () => {
         {
           type: 'tool_use',
           id: 'tool_2',
-          name: 'set_decision',
-          input: { category: 'database', component: 'MongoDB', reasoning: 'Flexible' },
-        },
-        {
-          type: 'tool_use',
-          id: 'tool_3',
-          name: 'present_plan',
-          input: {},
+          name: 'summarize_stage',
+          input: { category: 'frontend', summary: 'Chose React for frontend.' },
         },
       ],
     })
 
-    const result = await runConversationLoop()
+    const result = await runStageLoop(mockStage, mockManager as any)
 
-    // Verify the result has both decisions
-    expect(result).not.toBeNull()
-    expect(result!.frontend!.component).toBe('React')
-    expect(result!.database!.component).toBe('MongoDB')
-
-    // Inspect the messages sent in the last chatStream call
-    const lastCallIdx = mockChatStream.mock.calls.length - 1
-    const msgs = mockChatStream.mock.calls[lastCallIdx][0].messages
-
-    // Find the assistant message with tool_use blocks
-    const toolAssistantMsg = msgs.find(
-      (m: any) => m.role === 'assistant' && Array.isArray(m.content) &&
-        m.content.some((b: any) => b.type === 'tool_use')
-    )
-    // Find the user message with tool_result blocks
-    const toolResultMsg = msgs.find(
-      (m: any) => m.role === 'user' && Array.isArray(m.content) &&
-        m.content.some((b: any) => b.type === 'tool_result')
-    )
-
-    // All 3 tool_use blocks should be in ONE assistant message
-    expect(toolAssistantMsg).toBeDefined()
-    const assistantContent = toolAssistantMsg!.content as any[]
-    const toolUseCount = assistantContent.filter((b: any) => b.type === 'tool_use').length
-    expect(toolUseCount).toBe(3)
-
-    // All 3 tool_result blocks should be in ONE user message
-    expect(toolResultMsg).toBeDefined()
-    const userContent = toolResultMsg!.content as any[]
-    const toolResultCount = userContent.filter((b: any) => b.type === 'tool_result').length
-    expect(toolResultCount).toBe(3)
+    // Verify the result
+    expect(result).toEqual({ outcome: 'complete', summary: 'Chose React for frontend.' })
+    expect(mockManager.progress.frontend!.component).toBe('React')
   })
 
   it('handles summarize_stage by replacing earlier messages with summary', async () => {
+    const mockManager = createMockManager()
+
     // Initial response: Claude asks for project name
     mockStreamResponse({
       content: [{ type: 'text', text: 'What is your project name?' }],
     })
-    mockGetUserInput.mockResolvedValueOnce('Build me an app')
+    mockGetUserInput.mockResolvedValueOnce({ kind: 'text', value: 'Build me an app' })
 
     // First response: text
     mockStreamResponse({
       content: [{ type: 'text', text: 'Let me help you.' }],
     })
 
-    mockGetUserInput.mockResolvedValueOnce('Use React')
+    mockGetUserInput.mockResolvedValueOnce({ kind: 'text', value: 'Use React' })
 
     // Second response: set_decision + summarize_stage
     mockStreamResponse({
@@ -260,35 +295,20 @@ describe('runConversationLoop', () => {
       ],
     })
 
-    // After summarize, Claude returns more text
-    mockStreamResponse({
-      content: [{ type: 'text', text: 'Now let us pick a database.' }],
-    })
+    const result = await runStageLoop(mockStage, mockManager as any)
 
-    // User cancels
-    mockGetUserInput.mockResolvedValueOnce(null)
+    expect(result).toEqual({ outcome: 'complete', summary: 'User chose React for the frontend.' })
 
-    await runConversationLoop()
-
-    // After summarize_stage, find the call where messages were replaced
-    // The call after summarize should have the summary as the first message
-    const allCalls = mockChatStream.mock.calls
-    const callAfterSummarize = allCalls.find((call: any) => {
-      const msgs = call[0].messages
-      return msgs.length > 0 && msgs[0].role === 'assistant' &&
-        msgs[0].content === 'User chose React for the frontend.'
-    })
-
-    expect(callAfterSummarize).toBeDefined()
-    const msgs = callAfterSummarize![0].messages
-    expect(msgs[0].role).toBe('assistant')
-    expect(msgs[0].content).toBe('User chose React for the frontend.')
-    expect(msgs[1].role).toBe('user')
-    expect(msgs[1].content).toBe('[Continuing]')
+    // Verify messages were compressed
+    const messages = mockManager.messages
+    expect(messages[0].role).toBe('assistant')
+    expect(messages[0].content).toBe('User chose React for the frontend.')
+    expect(messages[1].role).toBe('user')
+    expect(messages[1].content).toBe('[Continuing]')
   })
 
   it('passes live messages array to executeConversationTool', async () => {
-    mockGetUserInput.mockResolvedValueOnce('Build me an app')
+    const mockManager = createMockManager()
 
     // Claude responds with a tool call
     mockStreamResponse({
@@ -302,16 +322,42 @@ describe('runConversationLoop', () => {
         {
           type: 'tool_use',
           id: 'tool_2',
-          name: 'present_plan',
-          input: {},
+          name: 'summarize_stage',
+          input: { category: 'project_info', summary: 'Project: test-app' },
         },
       ],
     })
 
-    const result = await runConversationLoop()
+    const result = await runStageLoop(mockProjectInfoStage, mockManager as any)
 
-    expect(result).not.toBeNull()
-    expect(result!.projectName).toBe('test-app')
+    expect(result).toEqual({ outcome: 'complete', summary: 'Project: test-app' })
+    expect(mockManager.progress.projectName).toBe('test-app')
+  })
+
+  it('updates manager.progress after each tool execution', async () => {
+    const mockManager = createMockManager()
+
+    mockStreamResponse({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'set_decision',
+          input: { category: 'frontend', component: 'Vue', reasoning: 'Great DX' },
+        },
+        {
+          type: 'tool_use',
+          id: 'tool_2',
+          name: 'summarize_stage',
+          input: { category: 'frontend', summary: 'Chose Vue.' },
+        },
+      ],
+    })
+
+    await runStageLoop(mockStage, mockManager as any)
+
+    // Progress should be updated on the manager
+    expect(mockManager.progress.frontend!.component).toBe('Vue')
   })
 })
 

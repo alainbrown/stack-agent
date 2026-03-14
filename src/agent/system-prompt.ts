@@ -1,23 +1,42 @@
 import { serializeProgress, type StackProgress } from './progress.js'
+import { STAGE_INSTRUCTIONS, type StageEntry } from './stages.js'
 
-export function buildConversationPrompt(progress: StackProgress): string {
+export function buildConversationPrompt(
+  progress: StackProgress,
+  stageId: string,
+  stages: StageEntry[],
+): string {
+  const stage = stages.find((s) => s.id === stageId)
+  const stageLabel = stage?.label ?? stageId
+  const instruction = STAGE_INSTRUCTIONS[stageId] ?? `Discuss the ${stageLabel} stage with the user.`
+
+  const completedSummaries = stages
+    .filter((s) => s.status === 'complete' && s.summary)
+    .map((s) => `- ${s.label}: ${s.summary}`)
+    .join('\n')
+
+  const contextSection = completedSummaries
+    ? `\n\nContext from previous stages:\n${completedSummaries}`
+    : ''
+
   return `You are a senior software architect helping a developer set up a new project.
 
-Your job is to guide the user through selecting their technology stack by having a natural conversation. Work through these categories: frontend, backend, database, auth, payments, ai/llm, deployment, and any extras they might want.
+Current project state:
+${serializeProgress(progress)}
+
+## Current Stage: ${stageLabel}
+
+You are currently discussing the ${stageLabel} stage.
+${instruction}
+
+For each set of options, number them (1, 2, 3...) so users can respond quickly. Explicitly label your top pick with "(Recommended)" and explain WHY it's the best fit. Be opinionated — you are a senior architect, not a menu.
+${contextSection}
 
 Guidelines:
-- Present 2-3 concrete options per category, plus a "something else" option. Number them (1, 2, 3...) so users can respond quickly.
-- For each set of options, explicitly label your top pick with "(Recommended)" next to it and explain WHY it's the best fit for this specific project. Example: "1. Next.js (Recommended) — server components, built-in API routes...". Then briefly describe the alternatives and their trade-offs. Be opinionated — you are a senior architect, not a menu.
-- Keep the conversation focused and friendly. Ask one category at a time.
-- When the user decides on something, call \`set_decision\` to commit that decision before moving on.
-- Start by asking for a project name and a brief description of what they're building. Call \`set_project_info\` to record these before moving to stack decisions.
-- As conversations get long, call \`summarize_stage\` when completing each category to keep context manageable.
-- Once all decisions are made (frontend, database, and deployment are required; backend, auth, payments, and extras are optional), call \`present_plan\` to signal the plan is ready.
-
-Do not ask the user to confirm each tool call — just make the calls naturally as decisions are reached.
-
-Current project state:
-${serializeProgress(progress)}`
+- Focus on ${stageLabel}. Do not discuss other undecided stages.
+- When the user has made their choice, call \`set_decision\` to commit it, then call \`summarize_stage\` to summarize what was decided.
+- If this stage is not relevant to the project, briefly explain why and call \`summarize_stage\` to skip it.
+- Do not ask the user to confirm each tool call — just make the calls naturally as decisions are reached.`
 }
 
 export function buildScaffoldPrompt(progress: StackProgress): string {

@@ -10,7 +10,6 @@ import {
 export interface ConversationToolResult {
   progress: StackProgress
   response: string
-  signal?: 'present_plan'
 }
 
 export function conversationToolDefinitions(): Tool[] {
@@ -81,15 +80,6 @@ export function conversationToolDefinitions(): Tool[] {
           },
         },
         required: ['category', 'summary'],
-      },
-    },
-    {
-      name: 'present_plan',
-      description: 'Signals that all decisions have been made and the plan is ready to present.',
-      input_schema: {
-        type: 'object',
-        properties: {},
-        required: [],
       },
     },
   ]
@@ -191,14 +181,6 @@ export function executeConversationTool(
     return {
       progress,
       response: input.summary as string,
-    }
-  }
-
-  if (name === 'present_plan') {
-    return {
-      progress,
-      response: 'Plan is ready to present.',
-      signal: 'present_plan',
     }
   }
 

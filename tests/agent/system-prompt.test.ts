@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildConversationPrompt, buildScaffoldPrompt } from '../../src/agent/system-prompt.js'
 import { createProgress, setDecision } from '../../src/agent/progress.js'
 import type { StackProgress } from '../../src/agent/progress.js'
+import { DEFAULT_STAGES } from '../../src/agent/stages.js'
 
 function makeFullProgress(): StackProgress {
   let p = createProgress()
@@ -14,13 +15,13 @@ function makeFullProgress(): StackProgress {
 
 describe('buildConversationPrompt', () => {
   it('includes "senior software architect" persona', () => {
-    const prompt = buildConversationPrompt(createProgress())
+    const prompt = buildConversationPrompt(createProgress(), 'project_info', DEFAULT_STAGES)
     expect(prompt).toContain('senior software architect')
   })
 
   it('includes current progress state', () => {
     const progress = makeFullProgress()
-    const prompt = buildConversationPrompt(progress)
+    const prompt = buildConversationPrompt(progress, 'project_info', DEFAULT_STAGES)
     expect(prompt).toContain('MyApp')
     expect(prompt).toContain('A test application')
     expect(prompt).toContain('Next.js')
@@ -29,27 +30,22 @@ describe('buildConversationPrompt', () => {
   })
 
   it('includes set_decision tool name', () => {
-    const prompt = buildConversationPrompt(createProgress())
+    const prompt = buildConversationPrompt(createProgress(), 'project_info', DEFAULT_STAGES)
     expect(prompt).toContain('set_decision')
   })
 
-  it('includes present_plan tool name', () => {
-    const prompt = buildConversationPrompt(createProgress())
-    expect(prompt).toContain('present_plan')
-  })
-
-  it('includes set_project_info tool name', () => {
-    const prompt = buildConversationPrompt(createProgress())
-    expect(prompt).toContain('set_project_info')
+  it('includes Current Stage section', () => {
+    const prompt = buildConversationPrompt(createProgress(), 'project_info', DEFAULT_STAGES)
+    expect(prompt).toContain('Current Stage:')
   })
 
   it('mentions presenting 2-3 options per category', () => {
-    const prompt = buildConversationPrompt(createProgress())
+    const prompt = buildConversationPrompt(createProgress(), 'frontend', DEFAULT_STAGES)
     expect(prompt).toMatch(/2.?3.*options|options.*2.?3/i)
   })
 
-  it('mentions summarize_stage for long conversations', () => {
-    const prompt = buildConversationPrompt(createProgress())
+  it('mentions summarize_stage for stage completion', () => {
+    const prompt = buildConversationPrompt(createProgress(), 'project_info', DEFAULT_STAGES)
     expect(prompt).toContain('summarize_stage')
   })
 })

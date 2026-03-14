@@ -1,9 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { Tool } from '@anthropic-ai/sdk/resources/messages.js'
+import type { Tool, MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
 
 export interface ChatOptions {
   system: string
-  messages: Array<{ role: 'user' | 'assistant'; content: string | object[] }>
+  messages: MessageParam[]
   tools: Tool[]
   maxTokens: number
   mcpServers?: Record<string, { url: string; apiKey?: string }>
@@ -13,7 +13,7 @@ function getClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     throw new Error(
-      'ANTHROPIC_API_KEY environment variable is not set. Please set it before running create-stack.',
+      'ANTHROPIC_API_KEY environment variable is not set. Please set it before running stack-agent.',
     )
   }
   return new Anthropic({ apiKey })
@@ -46,7 +46,6 @@ export async function chat(options: ChatOptions) {
         model: 'claude-sonnet-4-6',
         max_tokens: maxTokens,
         system,
-        // @ts-expect-error: mcp_servers is a beta param not yet in SDK types
         messages,
         tools,
         mcp_servers: mcpServerList,
@@ -103,6 +102,6 @@ export async function chatStream(
 
   callbacks.onComplete({
     content: finalMessage.content as object[],
-    stop_reason: finalMessage.stop_reason,
+    stop_reason: finalMessage.stop_reason ?? 'end_turn',
   })
 }

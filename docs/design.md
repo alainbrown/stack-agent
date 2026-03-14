@@ -1,4 +1,4 @@
-# create-stack v2 — Design Specification
+# stack-agent — Design Specification
 
 ## Overview
 

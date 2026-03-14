@@ -19,7 +19,7 @@ async function main() {
   })
 
   if (p.isCancel(confirmed) || !confirmed) {
-    outro('No problem — run create-stack again to start over.')
+    outro('No problem — run stack-agent again to start over.')
     return
   }
 
@@ -48,6 +48,6 @@ if (!command || command === 'init') {
   })
 } else {
   console.error(`Unknown command: ${command}`)
-  console.error('Usage: create-stack [init]')
+  console.error('Usage: stack-agent [init]')
   process.exit(1)
 }

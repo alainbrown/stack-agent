@@ -27,16 +27,11 @@ import {
 import { runScaffold } from '../scaffold/base.js'
 import { writeIntegration } from '../scaffold/integrate.js'
 
-interface Message {
-  role: 'user' | 'assistant'
-  content: string | object[]
-}
-
 export async function runConversationLoop(
   mcpServers?: Record<string, { url: string; apiKey?: string }>,
 ): Promise<StackProgress | null> {
   let progress = createProgress()
-  const messages: Message[] = []
+  const messages: MessageParam[] = []
 
   // Kick off the conversation — Claude will ask for project name first
   messages.push({ role: 'user', content: 'I want to start a new project.' })
@@ -52,7 +47,7 @@ export async function runConversationLoop(
     await chatStream(
       {
         system,
-        messages: messages as MessageParam[],
+        messages: messages,
         tools: conversationToolDefinitions(),
         maxTokens: 4096,
         mcpServers,
@@ -83,7 +78,7 @@ export async function runConversationLoop(
 
     if (toolUseBlocks.length > 0) {
       // CRITICAL: Push ALL content blocks as a SINGLE assistant message
-      messages.push({ role: 'assistant', content: contentBlocks as object[] })
+      messages.push({ role: 'assistant', content: contentBlocks as MessageParam['content'] })
 
       // Execute all tools and collect results
       const toolResults: object[] = []
@@ -103,7 +98,7 @@ export async function runConversationLoop(
           toolBlock.name,
           toolBlock.input,
           progress,
-          messages as MessageParam[],
+          messages,
         )
 
         progress = result.progress
@@ -125,7 +120,7 @@ export async function runConversationLoop(
       }
 
       // CRITICAL: Push ALL tool_result blocks as a SINGLE user message
-      messages.push({ role: 'user', content: toolResults })
+      messages.push({ role: 'user', content: toolResults as MessageParam['content'] })
 
       // Handle summarize_stage: replace earlier conversation messages with summary
       if (hasSummarizeStage) {
@@ -166,7 +161,7 @@ export async function runConversationLoop(
     // Push assistant message (text only)
     messages.push({
       role: 'assistant',
-      content: contentBlocks as object[],
+      content: contentBlocks as MessageParam['content'],
     })
     messages.push({ role: 'user', content: userInput })
   }
@@ -176,7 +171,7 @@ export async function runScaffoldLoop(
   progress: StackProgress,
   mcpServers?: Record<string, { url: string; apiKey?: string }>,
 ): Promise<boolean> {
-  const messages: Message[] = []
+  const messages: MessageParam[] = []
   const system = buildScaffoldPrompt(progress)
   const cwd = process.cwd()
   const projectName = progress.projectName!
@@ -194,9 +189,9 @@ export async function runScaffoldLoop(
   while (true) {
     const response = await chat({
       system,
-      messages: messages as MessageParam[],
+      messages: messages,
       tools: scaffoldToolDefinitions(),
-      maxTokens: 4096,
+      maxTokens: 16384,
       mcpServers,
     })
 
@@ -212,7 +207,7 @@ export async function runScaffoldLoop(
     }
 
     // Push assistant message with all content blocks
-    messages.push({ role: 'assistant', content: contentBlocks as object[] })
+    messages.push({ role: 'assistant', content: contentBlocks as MessageParam['content'] })
 
     // Execute all tool calls
     const toolResults: object[] = []
@@ -302,7 +297,7 @@ export async function runScaffoldLoop(
     }
 
     // Push all tool results as a single user message
-    messages.push({ role: 'user', content: toolResults })
+    messages.push({ role: 'user', content: toolResults as MessageParam['content'] })
   }
 }
 

@@ -31,6 +31,10 @@ npm test             # Run tests (176 tests)
 npm run build        # Build with tsup
 ```
 
+## Claude Code skill
+
+Prefer Claude Code? There's a [skill version](https://github.com/alainbrown/stack-agent-skill) that runs natively inside Claude Code — same workflow, no separate tool.
+
 ## License
 
 MIT

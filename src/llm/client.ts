@@ -8,6 +8,32 @@ function summarizeMessages(messages: MessageParam[]): string {
   return `${messages.length} messages, last: ${messages.at(-1)?.role ?? 'none'}`
 }
 
+function withMessageCaching(messages: MessageParam[]): MessageParam[] {
+  if (messages.length < 2) return messages
+
+  // Mark the second-to-last message with cache_control on its last content block.
+  // Everything up to and including that message will be cached.
+  const cached = messages.map((m, i) => {
+    if (i !== messages.length - 2) return m
+
+    const content = m.content
+    if (typeof content === 'string') {
+      return { ...m, content: [{ type: 'text' as const, text: content, cache_control: { type: 'ephemeral' as const } }] }
+    }
+    if (Array.isArray(content)) {
+      const blocks = [...content]
+      const last = blocks[blocks.length - 1]
+      if (last) {
+        blocks[blocks.length - 1] = { ...last, cache_control: { type: 'ephemeral' as const } } as typeof last
+      }
+      return { ...m, content: blocks }
+    }
+    return m
+  })
+
+  return cached
+}
+
 export interface ChatOptions {
   system: string
   messages: MessageParam[]
@@ -73,8 +99,8 @@ export async function chat(options: ChatOptions): Promise<Message> {
     response = await client().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: maxTokens,
-      system,
-      messages,
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+      messages: withMessageCaching(messages),
       ...(tools && tools.length > 0 && { tools }),
     })
   }
@@ -106,8 +132,8 @@ export async function chatStream(
   const stream = client().messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: maxTokens,
-    system,
-    messages,
+    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+    messages: withMessageCaching(messages),
     ...(tools && tools.length > 0 && { tools }),
   })
 

@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages.js'
 import { chat, chatStream } from '../llm/client.js'
-import type { ConversationBridge } from '../cli/bridge.js'
+import type { ConversationBridge, ScaffoldStep, ScaffoldProgressCallback } from '../cli/bridge.js'
 import {
   conversationToolDefinitions,
   scaffoldToolDefinitions,
@@ -191,15 +191,9 @@ export async function runStageLoop(
   }
 }
 
-function createSimpleSpinner() {
-  return {
-    start: (msg: string) => process.stdout.write(`  ${msg}...`),
-    stop: (msg: string) => process.stdout.write(` ${msg}\n`),
-  }
-}
-
 export async function runScaffoldLoop(
   progress: StackProgress,
+  onProgress?: ScaffoldProgressCallback,
   mcpServers?: Record<string, { url: string; apiKey?: string }>,
 ): Promise<boolean> {
   const messages: MessageParam[] = []
@@ -210,6 +204,18 @@ export async function runScaffoldLoop(
 
   let toolCallCount = 0
   const maxToolCalls = 30
+  const steps: ScaffoldStep[] = []
+
+  function pushStep(step: ScaffoldStep) {
+    steps.push(step)
+    onProgress?.([...steps])
+  }
+
+  function updateLastStep(patch: Partial<ScaffoldStep>) {
+    const last = steps[steps.length - 1]
+    if (last) Object.assign(last, patch)
+    onProgress?.([...steps])
+  }
 
   // Initial message to kick off the scaffold
   messages.push({
@@ -218,6 +224,9 @@ export async function runScaffoldLoop(
   })
 
   while (true) {
+    // Show thinking spinner while waiting for LLM
+    pushStep({ name: 'Planning next step...', status: 'running' })
+
     const response = await chat({
       system,
       messages: messages,
@@ -225,6 +234,10 @@ export async function runScaffoldLoop(
       maxTokens: 16384,
       mcpServers,
     })
+
+    // Remove the thinking spinner
+    steps.pop()
+    onProgress?.([...steps])
 
     const contentBlocks = response.content
 
@@ -253,15 +266,13 @@ export async function runScaffoldLoop(
 
       toolCallCount++
       if (toolCallCount > maxToolCalls) {
-        console.error(`Tool call limit exceeded (${maxToolCalls}). Stopping scaffold loop.`)
+        pushStep({ name: 'Tool call limit exceeded', status: 'error', error: `Exceeded ${maxToolCalls} tool calls` })
         return false
       }
 
-      const spinner = createSimpleSpinner()
-
       try {
         if (toolBlock.name === 'run_scaffold') {
-          spinner.start(`Running scaffold: ${toolBlock.input.tool as string}`)
+          pushStep({ name: 'Creating project', status: 'running' })
 
           const outputDir = runScaffold(
             toolBlock.input.tool as string,
@@ -270,7 +281,7 @@ export async function runScaffoldLoop(
             cwd,
           )
 
-          spinner.stop(`Scaffold complete: ${outputDir}`)
+          updateLastStep({ name: 'Created project', status: 'done' })
 
           toolResults.push({
             type: 'tool_result',
@@ -278,10 +289,12 @@ export async function runScaffoldLoop(
             content: `Scaffold completed. Project created at ${outputDir}`,
           })
         } else if (toolBlock.name === 'add_integration') {
-          const integrationDesc = Object.keys(
+          const files = Object.keys(
             (toolBlock.input.files as Record<string, string>) ?? {},
-          ).join(', ')
-          spinner.start(`Adding integration: ${integrationDesc}`)
+          )
+          const integrationName = (toolBlock.input.name as string) ?? 'Integration'
+
+          pushStep({ name: `Adding ${integrationName}`, status: 'running' })
 
           writeIntegration(projectDir, {
             files: (toolBlock.input.files as Record<string, string>) ?? {},
@@ -297,7 +310,7 @@ export async function runScaffoldLoop(
             envVars: toolBlock.input.envVars as string[] | undefined,
           })
 
-          spinner.stop('Integration added')
+          updateLastStep({ name: integrationName, status: 'done', files })
 
           toolResults.push({
             type: 'tool_result',
@@ -305,7 +318,7 @@ export async function runScaffoldLoop(
             content: 'Integration written successfully.',
           })
         } else {
-          spinner.stop(`Unknown tool: ${toolBlock.name}`)
+          pushStep({ name: `Unknown tool: ${toolBlock.name}`, status: 'error', error: `Unknown tool: "${toolBlock.name}"` })
           toolResults.push({
             type: 'tool_result',
             tool_use_id: toolBlock.id,
@@ -316,7 +329,7 @@ export async function runScaffoldLoop(
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : String(err)
-        spinner.stop(`Error: ${errorMessage}`)
+        updateLastStep({ status: 'error', error: errorMessage })
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolBlock.id,

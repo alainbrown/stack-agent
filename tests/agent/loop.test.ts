@@ -652,6 +652,71 @@ describe('runScaffoldLoop', () => {
     )
   })
 
+  it('calls onProgress with step updates during scaffolding', async () => {
+    let progress = createProgress()
+    progress.projectName = 'my-app'
+    progress.frontend = { component: 'Next.js', reasoning: 'User chose' }
+
+    mockRunScaffold.mockReturnValue('/tmp/my-app')
+
+    // First response: run_scaffold
+    mockChat.mockResolvedValueOnce({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'run_scaffold',
+          input: { tool: 'create-next-app', args: ['--typescript'] },
+        },
+      ],
+    } as any)
+
+    // Second response: add_integration
+    mockChat.mockResolvedValueOnce({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'tool_2',
+          name: 'add_integration',
+          input: {
+            files: { 'src/db/schema.ts': 'schema', 'src/db/index.ts': 'index' },
+          },
+        },
+      ],
+    } as any)
+
+    // Third response: done
+    mockChat.mockResolvedValueOnce({
+      content: [{ type: 'text', text: 'Done!' }],
+    } as any)
+
+    const progressCalls: any[] = []
+    const onProgress = vi.fn((steps: any) => progressCalls.push(structuredClone(steps)))
+
+    await runScaffoldLoop(progress, onProgress)
+
+    // onProgress should have been called multiple times
+    expect(onProgress).toHaveBeenCalled()
+
+    // First call: running scaffold
+    const firstCall = progressCalls[0]
+    expect(firstCall).toHaveLength(1)
+    expect(firstCall[0].status).toBe('running')
+
+    // Should eventually have a done scaffold step
+    const hasDoneScaffold = progressCalls.some((steps) =>
+      steps.some((s: any) => s.status === 'done' && s.name.toLowerCase().includes('project'))
+    )
+    expect(hasDoneScaffold).toBe(true)
+
+    // Should have an integration step with files
+    const lastCall = progressCalls[progressCalls.length - 1]
+    const integrationStep = lastCall.find((s: any) => s.files && s.files.length > 0)
+    expect(integrationStep).toBeDefined()
+    expect(integrationStep.status).toBe('done')
+    expect(integrationStep.files).toContain('src/db/schema.ts')
+  })
+
   it('handles unknown scaffold tool names with is_error', async () => {
     let progress = createProgress()
     progress.projectName = 'my-app'

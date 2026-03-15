@@ -7,10 +7,11 @@ interface HeaderProps {
   currentStage: StageEntry | null
   stages: StageEntry[]
   showDots?: boolean   // show during conversation, hide on stage list
+  title?: string       // overrides stage name display
 }
 
-export function Header({ appName, currentStage, stages, showDots = false }: HeaderProps) {
-  const stageName = currentStage?.label ?? 'Stack Progress'
+export function Header({ appName, currentStage, stages, showDots = false, title }: HeaderProps) {
+  const stageName = title ?? currentStage?.label ?? 'Stack Progress'
 
   return (
     <Box borderStyle="single" borderBottom={false} paddingX={1} justifyContent="space-between">

@@ -3,7 +3,7 @@ import { Box, Text } from 'ink'
 import type { StageEntry } from '../../agent/stages.js'
 import type { StackProgress } from '../../agent/progress.js'
 
-export type FooterMode = 'decisions' | 'stage_list' | 'options' | 'input'
+export type FooterMode = 'decisions' | 'stage_list' | 'options' | 'input' | 'scaffold'
 
 interface FooterProps {
   progress: StackProgress
@@ -24,6 +24,9 @@ export function Footer({ progress, stages, terminalWidth, mode = 'decisions' }: 
       break
     case 'input':
       display = 'Enter submit · Esc stages'
+      break
+    case 'scaffold':
+      display = 'Scaffolding your project...'
       break
     default:
       display = buildDecisionsDisplay(progress, stages, terminalWidth)

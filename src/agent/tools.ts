@@ -127,6 +127,10 @@ export function scaffoldToolDefinitions(): Tool[] {
       input_schema: {
         type: 'object',
         properties: {
+          name: {
+            type: 'string',
+            description: 'Short name for this integration (e.g. "Database", "Auth", "AI Chat", "Deploy Config").',
+          },
           files: {
             type: 'object',
             additionalProperties: { type: 'string' },
@@ -153,7 +157,7 @@ export function scaffoldToolDefinitions(): Tool[] {
             description: 'List of environment variable names required by the integration.',
           },
         },
-        required: ['files'],
+        required: ['name', 'files'],
       },
     },
   ]

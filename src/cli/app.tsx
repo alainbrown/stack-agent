@@ -8,14 +8,15 @@ import { OptionSelect } from './components/option-select.js'
 import { StageListView, type StageListResult } from './components/stage-list.js'
 import { TextInput, Spinner } from '@inkjs/ui'
 import { ProjectInfoForm } from './components/project-info-form.js'
-import { createBridge, type ConversationBridge, type ToolOption, type InputResult } from './bridge.js'
-import { runStageLoop, type StageLoopResult } from '../agent/loop.js'
+import { ScaffoldView } from './components/scaffold-view.js'
+import { createBridge, type ConversationBridge, type ToolOption, type InputResult, type ScaffoldStep, type ScaffoldProgressCallback } from './bridge.js'
+import { runStageLoop, runScaffoldLoop, type StageLoopResult } from '../agent/loop.js'
 import { getRecommendations, applyRecommendations } from '../agent/recommend.js'
 import type { StageManager } from '../agent/stage-manager.js'
 import type { StageEntry } from '../agent/stages.js'
 import type { StackProgress } from '../agent/progress.js'
 
-type AppView = 'project_info' | 'loading' | 'stage_list' | 'conversation' | 'input' | 'options' | 'error'
+type AppView = 'project_info' | 'loading' | 'stage_list' | 'conversation' | 'input' | 'options' | 'error' | 'scaffold'
 
 interface AppProps {
   manager: StageManager
@@ -36,6 +37,7 @@ export function App({ manager, onBuild, onExit }: AppProps) {
   const [stages, setStages] = useState<StageEntry[]>([...manager.stages])
   const [options, setOptions] = useState<ToolOption[]>([])
   const [errorMsg, setErrorMsg] = useState('')
+  const [scaffoldSteps, setScaffoldSteps] = useState<ScaffoldStep[]>([])
 
   // Sync state from manager
   const syncState = useCallback(() => {
@@ -114,7 +116,7 @@ export function App({ manager, onBuild, onExit }: AppProps) {
   }, [manager, bridge, syncState])
 
   // Handle stage list selection
-  const handleStageResult = useCallback((result: StageListResult) => {
+  const handleStageResult = useCallback(async (result: StageListResult) => {
     if (result.kind === 'select') {
       // If the stage has a decision, navigate to it for review
       const stage = manager.stages.find((s) => s.id === result.stageId)
@@ -124,7 +126,27 @@ export function App({ manager, onBuild, onExit }: AppProps) {
       }
       runStage(result.stageId)
     } else if (result.kind === 'build') {
-      onBuild()
+      setView('scaffold')
+      setScaffoldSteps([])
+
+      const onScaffoldProgress: ScaffoldProgressCallback = (steps) => {
+        setScaffoldSteps([...steps])
+      }
+
+      try {
+        const success = await runScaffoldLoop(manager.progress, onScaffoldProgress)
+        if (success) {
+          manager.cleanup()
+          onBuild()
+        } else {
+          onBuild()
+        }
+      } catch (err) {
+        setErrorMsg((err as Error).message)
+        setView('error')
+        return
+      }
+
       app.exit()
     } else if (result.kind === 'cancel') {
       manager.save()
@@ -183,7 +205,7 @@ export function App({ manager, onBuild, onExit }: AppProps) {
     setView('stage_list')
   }, [manager, syncState])
 
-  const footerMode: FooterMode = view === 'stage_list' ? 'stage_list' : view === 'options' ? 'options' : view === 'input' || view === 'project_info' ? 'input' : 'decisions'
+  const footerMode: FooterMode = view === 'scaffold' ? 'scaffold' : view === 'stage_list' ? 'stage_list' : view === 'options' ? 'options' : view === 'input' || view === 'project_info' ? 'input' : 'decisions'
   // Header = 2 lines (border-top + content, no border-bottom)
   // Footer = 2 lines (content + border-bottom, no border-top)
   const contentHeight = height - 4
@@ -192,9 +214,10 @@ export function App({ manager, onBuild, onExit }: AppProps) {
     <Box flexDirection="column" width={width} height={height}>
       <Header
         appName="stack-agent"
-        currentStage={view === 'stage_list' ? null : currentStage}
+        currentStage={view === 'stage_list' || view === 'scaffold' ? null : currentStage}
         stages={stages}
-        showDots={view !== 'stage_list'}
+        showDots={view !== 'stage_list' && view !== 'scaffold'}
+        title={view === 'scaffold' ? 'Scaffolding' : undefined}
       />
 
       <Box flexDirection="column" height={contentHeight} paddingX={1} borderStyle="single" borderTop={false} borderBottom={false}>
@@ -245,6 +268,10 @@ export function App({ manager, onBuild, onExit }: AppProps) {
             <Text color="red" bold>Error: {errorMsg}</Text>
             <Text dimColor>Press Esc to return to stage list</Text>
           </Box>
+        )}
+
+        {view === 'scaffold' && (
+          <ScaffoldView steps={scaffoldSteps} />
         )}
       </Box>
 

@@ -4,7 +4,6 @@ import { App } from './cli/app.js'
 import { StageManager } from './agent/stage-manager.js'
 import { serializeProgress } from './agent/progress.js'
 import { chat } from './llm/client.js'
-import { runScaffoldLoop } from './agent/loop.js'
 import { renderPostScaffold } from './cli/chat.js'
 import { checkDeployReadiness } from './deploy/readiness.js'
 import type { InvalidationFn } from './agent/stages.js'
@@ -121,21 +120,13 @@ async function main(fresh = false) {
   await ink.start()
   await ink.waitUntilExit()
 
-  // Phase 2: Scaffold (normal stdout, outside fullscreen)
+  // Phase 2: Post-scaffold summary (after fullscreen exits)
   if (shouldBuild) {
-    console.log('\nScaffolding your project...\n')
-    const success = await runScaffoldLoop(manager.progress)
-
-    if (success) {
-      const readiness = manager.progress.deployment
-        ? checkDeployReadiness(manager.progress.deployment.component)
-        : null
-      renderPostScaffold(manager.progress.projectName!, readiness)
-      manager.cleanup()
-      console.log('\nHappy building!\n')
-    } else {
-      console.error('\nScaffolding encountered errors. Check the output above.\n')
-    }
+    const readiness = manager.progress.deployment
+      ? checkDeployReadiness(manager.progress.deployment.component)
+      : null
+    renderPostScaffold(manager.progress.projectName!, readiness)
+    console.log('\nHappy building!\n')
   }
 }
 

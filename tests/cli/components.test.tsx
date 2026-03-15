@@ -6,6 +6,8 @@ import { Header } from '../../src/cli/components/header.js'
 import { Footer } from '../../src/cli/components/footer.js'
 import { ProjectInfoForm } from '../../src/cli/components/project-info-form.js'
 import { StageListView } from '../../src/cli/components/stage-list.js'
+import { ScaffoldView } from '../../src/cli/components/scaffold-view.js'
+import type { ScaffoldStep } from '../../src/cli/bridge.js'
 import { createProgress, setDecision } from '../../src/agent/progress.js'
 import { applyRecommendations } from '../../src/agent/recommend.js'
 import { DEFAULT_STAGES, type StageEntry } from '../../src/agent/stages.js'
@@ -405,5 +407,41 @@ describe('Frame layout', () => {
     // Frame should still be intact
     expect(lines[0]).toContain('┌')
     expect(lines[lines.length - 1]).toContain('└')
+  })
+})
+
+describe('ScaffoldView', () => {
+  it('renders running step with spinner text', () => {
+    const steps: ScaffoldStep[] = [
+      { name: 'Creating project', status: 'running' },
+    ]
+    const { lastFrame } = render(<ScaffoldView steps={steps} />)
+    expect(lastFrame()).toContain('Creating project')
+  })
+
+  it('renders completed steps with checkmark and files', () => {
+    const steps: ScaffoldStep[] = [
+      { name: 'Created project', status: 'done' },
+      { name: 'Database', status: 'done', files: ['src/db/schema.ts', 'src/db/index.ts'] },
+      { name: 'Adding auth', status: 'running' },
+    ]
+    const { lastFrame } = render(<ScaffoldView steps={steps} />)
+    const output = lastFrame()
+    expect(output).toContain('✓')
+    expect(output).toContain('Created project')
+    expect(output).toContain('Database')
+    expect(output).toContain('src/db/schema.ts')
+    expect(output).toContain('Adding auth')
+  })
+
+  it('renders error steps', () => {
+    const steps: ScaffoldStep[] = [
+      { name: 'Created project', status: 'done' },
+      { name: 'Database', status: 'error', error: 'Connection failed' },
+    ]
+    const { lastFrame } = render(<ScaffoldView steps={steps} />)
+    const output = lastFrame()
+    expect(output).toContain('✗')
+    expect(output).toContain('Connection failed')
   })
 })

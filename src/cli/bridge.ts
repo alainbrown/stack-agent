@@ -30,6 +30,15 @@ export interface ConversationBridge {
   subscribe: (event: BridgeEvent, listener: (...args: any[]) => void) => () => void
 }
 
+export interface ScaffoldStep {
+  name: string
+  status: 'running' | 'done' | 'error'
+  files?: string[]
+  error?: string
+}
+
+export type ScaffoldProgressCallback = (steps: ScaffoldStep[]) => void
+
 export function createBridge(): ConversationBridge {
   const listeners = new Map<BridgeEvent, Set<(...args: any[]) => void>>()
   let pendingResolve: ((result: InputResult) => void) | null = null

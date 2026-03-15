@@ -14,7 +14,6 @@ A senior software architect in your terminal — it recommends your entire stack
 ```bash
 export ANTHROPIC_API_KEY=your-key-here
 npx stack-agent            # Start or resume a session
-npx stack-agent --fresh    # Clear saved progress and start over
 ```
 
 ## Requirements

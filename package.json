@@ -1,6 +1,6 @@
 {
   "name": "stack-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "AI-powered CLI that helps developers choose and scaffold full-stack applications through conversational interaction",
   "type": "module",
   "license": "MIT",

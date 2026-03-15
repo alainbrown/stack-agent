@@ -38,11 +38,11 @@ This repo also works as a Claude Code plugin. Same workflow, no separate tool â€
 ### Install
 
 **Claude Code:**
-1. Run `/plugin` to open the plugin manager
-2. Select **Add marketplace**
-3. Enter `https://github.com/alainbrown/stack-agent`
-4. Install the **stack-agent** skill
-5. Run `/reload-plugins` to activate
+```bash
+/plugin marketplace add alainbrown/stack-agent
+/plugin install stack-agent@stack-agent
+/reload-plugins
+```
 
 **Skills CLI:**
 ```bash

@@ -1,0 +1,42 @@
+{
+  "eval_id": 2,
+  "eval_name": "vague-project",
+  "configuration": "with_skill",
+  "expectations": [
+    {
+      "text": "Asks for or establishes a project name before scaffolding",
+      "passed": true,
+      "evidence": "Phase 1 Step 1 establishes project name as 'recipe-share' and description before proceeding to stack recommendation."
+    },
+    {
+      "text": "Presents a stack recommendation table with all categories",
+      "passed": true,
+      "evidence": "Step 2 presents an 8-row table with columns for Category, Recommendation, Rationale, and Status covering Frontend, Backend, Database, Auth, Payments, AI/LLM, Deployment, and Extras."
+    },
+    {
+      "text": "Offers the user a chance to review/change individual categories before building",
+      "passed": true,
+      "evidence": "After presenting the table, the skill says 'Pick a number to review, or looks good to confirm all and build.' The user can select any numbered category to change it before confirming."
+    },
+    {
+      "text": "Generates a database schema with recipe-relevant tables/models",
+      "passed": true,
+      "evidence": "src/db/schema.ts contains recipe-relevant tables: users, recipes (with title, description, instructions, prepTime, cookTime, servings, imageUrl), ingredients (with name, amount, unit), tags, and recipeTags join table, plus full Drizzle relations."
+    },
+    {
+      "text": "Generates a .env.example file",
+      "passed": true,
+      "evidence": "File exists at outputs/project/.env.example"
+    },
+    {
+      "text": "Generates a deploy.sh script",
+      "passed": true,
+      "evidence": "File exists at outputs/project/deploy.sh"
+    },
+    {
+      "text": "Skips or marks as unnecessary categories like payments and AI that a recipe site doesn't need",
+      "passed": true,
+      "evidence": "The stack table marks Payments as '—' with rationale 'Not needed for a recipe sharing site' and AI/LLM as '—' with 'Not needed for this project', both with status symbol ⊘ (skipped). Backend is also marked ⊘ since Next.js API routes suffice."
+    }
+  ]
+}

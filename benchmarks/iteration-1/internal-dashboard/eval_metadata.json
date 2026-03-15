@@ -1,0 +1,42 @@
+{
+  "eval_id": 3,
+  "eval_name": "internal-dashboard",
+  "prompt": "set up a codebase for an internal tool — it's a dashboard for our ops team to monitor order fulfillment. needs auth, a database, and stripe webhooks to track payment status",
+  "assertions": [
+    {
+      "id": "presents-table",
+      "text": "Presents a stack recommendation table",
+      "type": "qualitative"
+    },
+    {
+      "id": "internal-tool-awareness",
+      "text": "Recognizes this is an internal tool and factors that into framework choice (SPA is fine, SSR not strictly needed)",
+      "type": "qualitative"
+    },
+    {
+      "id": "has-auth-setup",
+      "text": "Generates auth boilerplate (middleware, provider config, or similar)",
+      "type": "file_exists"
+    },
+    {
+      "id": "has-stripe-webhook",
+      "text": "Generates a Stripe webhook handler file",
+      "type": "file_exists"
+    },
+    {
+      "id": "has-db-schema",
+      "text": "Generates a database schema with order/fulfillment-relevant tables",
+      "type": "qualitative"
+    },
+    {
+      "id": "has-env-example",
+      "text": "Generates .env.example with Stripe-related env vars (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, etc.)",
+      "type": "qualitative"
+    },
+    {
+      "id": "connected-boilerplate",
+      "text": "Files are wired together — webhook handler uses the db instance, auth protects routes, etc.",
+      "type": "qualitative"
+    }
+  ]
+}

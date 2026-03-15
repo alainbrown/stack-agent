@@ -1,0 +1,37 @@
+{
+  "eval_id": 4,
+  "eval_name": "cascading-invalidation",
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Presents an initial recommendation table before any changes",
+      "passed": false,
+      "evidence": "Turn 1 presents recommendations in a prose/bullet-point format (Frontend, Backend, Auth, Deployment, etc.) but does NOT use a structured table with status columns. There is no table with numbered rows, status markers, or a clear 'pick a number' interaction pattern."
+    },
+    {
+      "text": "When frontend changes from Next.js to Vite+React, explicitly identifies that backend and/or deployment are affected",
+      "passed": false,
+      "evidence": "Turn 3 says 'Everything else stays the same -- Express backend, PostgreSQL with Prisma, etc.' It does NOT identify that backend or deployment are affected by the frontend change. The analysis section confirms the baseline failed to flag any downstream impacts."
+    },
+    {
+      "text": "Resets affected downstream decisions in the table (back to pending/suggested status)",
+      "passed": false,
+      "evidence": "There is no table with status markers at any point. No decisions are reset to pending. The baseline treats the frontend change as an isolated swap with no downstream effects."
+    },
+    {
+      "text": "Walks through invalidated stages to re-decide them with new context (e.g., backend now needed since Vite has no API routes)",
+      "passed": false,
+      "evidence": "No invalidated stages are identified, so no walk-through occurs. The baseline does not re-evaluate backend, deployment, or authentication. It claims 'everything else stays the same' despite Next.js API routes and NextAuth.js no longer being viable."
+    },
+    {
+      "text": "Does NOT invalidate unrelated decisions (e.g., database, auth should stay unchanged)",
+      "passed": false,
+      "evidence": "While database (PostgreSQL) technically stayed unchanged, auth (NextAuth.js) should have been flagged as affected since it is tightly coupled to Next.js and cannot work with Vite + React. The baseline kept NextAuth.js unchanged when it should have been invalidated. This assertion is about correctly distinguishing affected from unaffected -- the baseline made no distinction at all, keeping everything unchanged including things that should have been invalidated (NextAuth.js)."
+    },
+    {
+      "text": "Final table is internally consistent — no decisions that assume Next.js remain after switching to Vite",
+      "passed": false,
+      "evidence": "There is no final table. Moreover, the final state is internally inconsistent: NextAuth.js (tightly coupled to Next.js) is retained, Vercel deployment (chosen for Next.js) is not revisited, and the backend architecture is described as 'Express backend' as if it was always separate when the original plan used Next.js API routes. Multiple Next.js-dependent decisions remain uncorrected."
+    }
+  ]
+}

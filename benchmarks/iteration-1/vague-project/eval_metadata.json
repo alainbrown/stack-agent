@@ -1,0 +1,42 @@
+{
+  "eval_id": 2,
+  "eval_name": "vague-project",
+  "prompt": "scaffold me a new project, it's going to be a recipe sharing site where people can post and browse recipes",
+  "assertions": [
+    {
+      "id": "asks-project-name",
+      "text": "Asks for or establishes a project name before scaffolding",
+      "type": "qualitative"
+    },
+    {
+      "id": "presents-table",
+      "text": "Presents a stack recommendation table with all categories",
+      "type": "qualitative"
+    },
+    {
+      "id": "stage-review-flow",
+      "text": "Offers the user a chance to review/change individual categories before building",
+      "type": "qualitative"
+    },
+    {
+      "id": "has-db-schema",
+      "text": "Generates a database schema with recipe-relevant tables/models",
+      "type": "qualitative"
+    },
+    {
+      "id": "has-env-example",
+      "text": "Generates a .env.example file",
+      "type": "file_exists"
+    },
+    {
+      "id": "has-deploy-script",
+      "text": "Generates a deploy.sh script",
+      "type": "file_exists"
+    },
+    {
+      "id": "skips-unnecessary",
+      "text": "Skips or marks as unnecessary categories like payments and AI that a recipe site doesn't need",
+      "type": "qualitative"
+    }
+  ]
+}

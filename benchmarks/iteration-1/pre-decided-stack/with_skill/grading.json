@@ -1,0 +1,42 @@
+{
+  "eval_id": 1,
+  "eval_name": "pre-decided-stack",
+  "configuration": "with_skill",
+  "expectations": [
+    {
+      "text": "Presents a stack recommendation table with categories and status indicators",
+      "passed": true,
+      "evidence": "Transcript shows a clear table with columns for #, Category, Recommendation, Rationale, and Status. Status indicators use symbols (diamond for selected, empty-set for skipped, checkmark for confirmed)."
+    },
+    {
+      "text": "Recognizes Next.js, Postgres, and Vercel as pre-decided and does not re-ask the user about them",
+      "passed": true,
+      "evidence": "Transcript explicitly states 'The user pre-specified Next.js, Postgres, and Vercel' and marks them with 'Pre-specified by user' rationale and diamond status. No clarification questions were asked about these choices."
+    },
+    {
+      "text": "Generates a database config/schema file (e.g. drizzle config, prisma schema, or similar ORM setup)",
+      "passed": true,
+      "evidence": "Project contains drizzle.config.ts, src/db/schema.ts, and src/db/index.ts."
+    },
+    {
+      "text": "Generates a .env.example file listing required environment variables",
+      "passed": true,
+      "evidence": "File .env.example exists in the project root."
+    },
+    {
+      "text": "Generates a deploy.sh script for Vercel deployment",
+      "passed": true,
+      "evidence": "File deploy.sh exists in the project root."
+    },
+    {
+      "text": "Generates a README.md with setup instructions",
+      "passed": true,
+      "evidence": "File README.md exists in the project root."
+    },
+    {
+      "text": "Boilerplate files are connected — e.g. a db instance is exported and imported by API routes, not isolated demo files",
+      "passed": true,
+      "evidence": "src/db/index.ts exports 'db' (Drizzle client with schema). src/app/api/tasks/route.ts imports 'db' from '@/db' and 'tasks, users' from '@/db/schema', then uses db.query and db.insert to perform actual queries. The Clerk auth middleware is also wired into the API route."
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "eval_id": 1,
+  "eval_name": "pre-decided-stack",
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Presents a stack recommendation table with categories and status indicators",
+      "passed": false,
+      "evidence": "The transcript shows a 'Decisions made' table with columns Decision/Choice/Reasoning, but it does not use standardized categories (Frontend, Backend, Database, Auth, Payments, AI/LLM, Deployment, Extras) and has no status indicators (symbols like checkmarks, diamonds, etc.). It is a decisions summary, not a stack recommendation table with status indicators."
+    },
+    {
+      "text": "Recognizes Next.js, Postgres, and Vercel as pre-decided and does not re-ask the user about them",
+      "passed": true,
+      "evidence": "The assistant immediately proceeded with Next.js, Postgres (via Drizzle), and Vercel without asking the user to confirm these choices. The transcript header says 'Decisions made (no user clarification requested)' and the decisions table lists them as chosen."
+    },
+    {
+      "text": "Generates a database config/schema file (e.g. drizzle config, prisma schema, or similar ORM setup)",
+      "passed": true,
+      "evidence": "Project contains drizzle.config.ts, src/db/schema.ts, and src/db/index.ts."
+    },
+    {
+      "text": "Generates a .env.example file listing required environment variables",
+      "passed": true,
+      "evidence": "File .env.example exists in the project root."
+    },
+    {
+      "text": "Generates a deploy.sh script for Vercel deployment",
+      "passed": false,
+      "evidence": "No deploy.sh file exists in the project directory. The project contains a vercel.json file instead, and the transcript recommends using 'npx vercel' or the Vercel dashboard for deployment, but no deploy.sh script was generated."
+    },
+    {
+      "text": "Generates a README.md with setup instructions",
+      "passed": false,
+      "evidence": "No README.md file exists in the project directory. The transcript provides setup instructions inline (Turn 4) but they were not written to a README.md file."
+    },
+    {
+      "text": "Boilerplate files are connected — e.g. a db instance is exported and imported by API routes, not isolated demo files",
+      "passed": true,
+      "evidence": "src/db/index.ts exports 'db' (Drizzle client with schema). src/app/api/tasks/route.ts imports 'db' from '@/db' and 'tasks' from '@/db/schema', and uses db.select() and db.insert() for real queries. It also imports validators from '@/lib/validators' using Zod schema validation. Files are genuinely connected."
+    }
+  ]
+}

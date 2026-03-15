@@ -31,9 +31,27 @@ npm test             # Run tests (176 tests)
 npm run build        # Build with tsup
 ```
 
-## Claude Code skill
+## Claude Code Skill
 
-Prefer Claude Code? There's a [skill version](https://github.com/alainbrown/stack-agent-skill) that runs natively inside Claude Code — same workflow, no separate tool.
+This repo also works as a Claude Code plugin. Same workflow, no separate tool — just install and describe what you want to scaffold.
+
+### Install
+
+**Claude Code:**
+1. Run `/plugin` to open the plugin manager
+2. Select **Add marketplace**
+3. Enter `https://github.com/alainbrown/stack-agent`
+4. Install the **stack-agent** skill
+5. Run `/reload-plugins` to activate
+
+**Skills CLI:**
+```bash
+npx skills add alainbrown/stack-agent
+```
+
+### Benchmarks
+
+The skill was tested across 5 evaluations comparing with-skill vs baseline Claude Code. Results and transcripts are in `benchmarks/`.
 
 ## License
 

@@ -1,0 +1,188 @@
+{
+  "metadata": {
+    "skill_name": "stack-agent",
+    "skill_path": "/mnt/bigstore/media/apps/code-server/workspace/stack-agent-skill/SKILL.md",
+    "executor_model": "claude-opus-4-6",
+    "analyzer_model": "claude-opus-4-6",
+    "timestamp": "2026-03-15T05:43:24Z",
+    "evals_run": [1, 2, 3],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 192.6,
+        "tokens": 33122,
+        "tool_calls": 33,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Presents a stack recommendation table with categories and status indicators", "passed": true, "evidence": "Table with #, Category, Recommendation, Rationale, Status columns with diamond/checkmark/empty-set indicators."},
+        {"text": "Recognizes pre-decided choices and does not re-ask", "passed": true, "evidence": "Marked pre-decided categories with 'Pre-specified by user' rationale."},
+        {"text": "Generates database config/schema file", "passed": true, "evidence": "drizzle.config.ts, src/db/schema.ts, src/db/index.ts present."},
+        {"text": "Generates .env.example", "passed": true, "evidence": ".env.example exists."},
+        {"text": "Generates deploy.sh", "passed": true, "evidence": "deploy.sh exists."},
+        {"text": "Generates README.md", "passed": true, "evidence": "README.md exists."},
+        {"text": "Boilerplate files are connected", "passed": true, "evidence": "db instance exported and imported by API routes with real queries."}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.571,
+        "passed": 4,
+        "failed": 3,
+        "total": 7,
+        "time_seconds": 145.9,
+        "tokens": 23402,
+        "tool_calls": 27,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Presents a stack recommendation table with categories and status indicators", "passed": false, "evidence": "Decisions table without standardized categories or status indicators."},
+        {"text": "Recognizes pre-decided choices and does not re-ask", "passed": true, "evidence": "Proceeded with specified choices without asking."},
+        {"text": "Generates database config/schema file", "passed": true, "evidence": "drizzle.config.ts, src/db/schema.ts, src/db/index.ts present."},
+        {"text": "Generates .env.example", "passed": true, "evidence": ".env.example exists."},
+        {"text": "Generates deploy.sh", "passed": false, "evidence": "No deploy.sh. Used vercel.json instead."},
+        {"text": "Generates README.md", "passed": false, "evidence": "No README.md. Setup instructions inline in transcript."},
+        {"text": "Boilerplate files are connected", "passed": true, "evidence": "db exported and imported by API routes."}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 205.3,
+        "tokens": 32947,
+        "tool_calls": 34,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Asks for or establishes a project name", "passed": true, "evidence": "Establishes 'recipe-share' in Phase 1 Step 1."},
+        {"text": "Presents stack recommendation table with all categories", "passed": true, "evidence": "8-row table with Recommendation, Rationale, Status."},
+        {"text": "Offers chance to review/change categories", "passed": true, "evidence": "'Pick a number to review, or looks good to confirm all and build.'"},
+        {"text": "Generates recipe-relevant database schema", "passed": true, "evidence": "Drizzle schema with recipes, ingredients, tags tables."},
+        {"text": "Generates .env.example", "passed": true, "evidence": ".env.example exists."},
+        {"text": "Generates deploy.sh", "passed": true, "evidence": "deploy.sh exists."},
+        {"text": "Skips unnecessary categories (payments, AI)", "passed": true, "evidence": "Payments and AI marked ⊘ with 'Not needed' rationale."}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.286,
+        "passed": 2,
+        "failed": 5,
+        "total": 7,
+        "time_seconds": 151.6,
+        "tokens": 24373,
+        "tool_calls": 22,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Asks for or establishes a project name", "passed": false, "evidence": "Jumped straight into scaffolding."},
+        {"text": "Presents stack recommendation table with all categories", "passed": false, "evidence": "Simple bullet list, missing categories."},
+        {"text": "Offers chance to review/change categories", "passed": false, "evidence": "Zero questions, 10+ assumptions."},
+        {"text": "Generates recipe-relevant database schema", "passed": true, "evidence": "Prisma schema with Recipe, Ingredient, Tag."},
+        {"text": "Generates .env.example", "passed": true, "evidence": ".env.example exists."},
+        {"text": "Generates deploy.sh", "passed": false, "evidence": "No deploy.sh generated."},
+        {"text": "Skips unnecessary categories (payments, AI)", "passed": false, "evidence": "Never mentioned payments or AI at all."}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 200.7,
+        "tokens": 36608,
+        "tool_calls": 35,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Presents stack recommendation table", "passed": true, "evidence": "Full table with 8 categories and status indicators."},
+        {"text": "Recognizes internal tool context", "passed": true, "evidence": "NextAuth 'free for internal tools', Railway 'good for internal tools'."},
+        {"text": "Generates auth boilerplate", "passed": true, "evidence": "auth.ts, middleware.ts, nextauth route handler present."},
+        {"text": "Generates Stripe webhook handler", "passed": true, "evidence": "Webhook route with signature verification and event handling."},
+        {"text": "Generates order/fulfillment database schema", "passed": true, "evidence": "orders and payments tables with status enums."},
+        {"text": "Generates .env.example with Stripe vars", "passed": true, "evidence": "Contains STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET."},
+        {"text": "Files are wired together", "passed": true, "evidence": "Webhook imports db, auth protects routes, all connected."}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.857,
+        "passed": 6,
+        "failed": 1,
+        "total": 7,
+        "time_seconds": 257.4,
+        "tokens": 36873,
+        "tool_calls": 40,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Presents stack recommendation table", "passed": true, "evidence": "Layer/Choice table shown."},
+        {"text": "Recognizes internal tool context", "passed": false, "evidence": "Cited SSR as positive rather than acknowledging not needed for internal tool."},
+        {"text": "Generates auth boilerplate", "passed": true, "evidence": "Full auth setup with NextAuth, credentials, middleware."},
+        {"text": "Generates Stripe webhook handler", "passed": true, "evidence": "4 event types, raw event storage, audit logs."},
+        {"text": "Generates order/fulfillment database schema", "passed": true, "evidence": "Prisma schema with Order, OrderItem, OrderStatusLog, StripeEvent."},
+        {"text": "Generates .env.example with Stripe vars", "passed": true, "evidence": "Contains STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET."},
+        {"text": "Files are wired together", "passed": true, "evidence": "Webhook imports db, auth middleware protects routes."}
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": 199.5, "stddev": 6.4, "min": 192.6, "max": 205.3},
+      "tokens": {"mean": 34226, "stddev": 2006, "min": 32947, "max": 36608}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 0.571, "stddev": 0.286, "min": 0.286, "max": 0.857},
+      "time_seconds": {"mean": 185.0, "stddev": 58.7, "min": 145.9, "max": 257.4},
+      "tokens": {"mean": 28216, "stddev": 7567, "min": 23402, "max": 36873}
+    },
+    "delta": {
+      "pass_rate": "+0.43",
+      "time_seconds": "+14.5",
+      "tokens": "+6010"
+    }
+  },
+  "notes": [
+    "with_skill achieved 100% pass rate across all 3 evals vs 57.1% average for baseline",
+    "Biggest gap on eval 2 (vague project): skill 7/7 vs baseline 2/7 — baseline made 10+ assumptions without asking",
+    "Smallest gap on eval 3 (internal dashboard): skill 7/7 vs baseline 6/7 — baseline strong on implementation, weak on context awareness",
+    "Skill adds ~14.5s and ~6k tokens overhead — cost of recommendation table and stage review flow",
+    "deploy.sh and README.md are non-discriminating for with_skill (always generated) but discriminating for baseline (missed in 2/3 evals)",
+    "connected-boilerplate passes for both configs — Claude already wires things together, skill doesn't change this"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "eval_id": 2,
+  "eval_name": "vague-project",
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Asks for or establishes a project name before scaffolding",
+      "passed": false,
+      "evidence": "The assistant immediately jumped into scaffolding without asking for or explicitly establishing a project name. The folder name 'recipe-share' appears in the project structure but was assumed, not asked about or confirmed with the user."
+    },
+    {
+      "text": "Presents a stack recommendation table with all categories",
+      "passed": false,
+      "evidence": "The assistant listed the chosen tech stack as a simple bullet list (Framework, Language, Styling, Database, Auth, Validation) without presenting it in a table format and without covering all standard categories like Payments, AI/LLM, Deployment, or Extras."
+    },
+    {
+      "text": "Offers the user a chance to review/change individual categories before building",
+      "passed": false,
+      "evidence": "The assistant chose the stack unilaterally and immediately scaffolded without offering the user any opportunity to review or change individual technology choices. The transcript's observations section explicitly notes '0 clarifying questions asked' and '~10+ assumptions made'."
+    },
+    {
+      "text": "Generates a database schema with recipe-relevant tables/models",
+      "passed": true,
+      "evidence": "prisma/schema.prisma contains recipe-relevant models: User, Recipe (with title, description, cookTime, prepTime, servings, imageUrl), Ingredient (name, amount, unit), Instruction (step, text), and Tag, all with proper relations."
+    },
+    {
+      "text": "Generates a .env.example file",
+      "passed": true,
+      "evidence": "File exists at outputs/project/.env.example (confirmed by find command)."
+    },
+    {
+      "text": "Generates a deploy.sh script",
+      "passed": false,
+      "evidence": "No deploy.sh file exists in the without_skill project directory. The find command returned no results for deploy.sh."
+    },
+    {
+      "text": "Skips or marks as unnecessary categories like payments and AI that a recipe site doesn't need",
+      "passed": false,
+      "evidence": "The assistant never mentioned payments or AI categories at all. It did not present a comprehensive category list, so there was no explicit acknowledgment that certain categories were unnecessary for this project."
+    }
+  ]
+}

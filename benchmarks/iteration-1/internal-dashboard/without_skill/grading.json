@@ -1,0 +1,42 @@
+{
+  "eval_id": 3,
+  "eval_name": "internal-dashboard",
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Presents a stack recommendation table",
+      "passed": true,
+      "evidence": "Transcript shows a table in Turn 3 with columns Layer and Choice, listing Framework (Next.js 14), Language (TypeScript), Auth (NextAuth.js), Database (PostgreSQL + Prisma ORM), Payments (Stripe SDK + webhook handler), Styling (Tailwind CSS), and Validation (Zod). It is a stack summary table, though it appears after decisions were already made rather than as an interactive recommendation."
+    },
+    {
+      "text": "Recognizes this is an internal tool and factors that into framework choice (SPA is fine, SSR not strictly needed)",
+      "passed": false,
+      "evidence": "The transcript mentions 'Internal tool, so no OAuth needed initially' for auth, but the framework choice rationale is 'standard for internal dashboards, SSR for fast loads, API routes co-located' -- it actually cites SSR as a positive rather than acknowledging it is not strictly needed for an internal tool. There is no explicit consideration of whether a SPA would suffice or any discussion of internal-tool-specific framework tradeoffs."
+    },
+    {
+      "text": "Generates auth boilerplate (middleware, provider config, or similar)",
+      "passed": true,
+      "evidence": "Files exist: src/lib/auth.ts (NextAuth config with credentials provider, PrismaAdapter, JWT callbacks), src/middleware.ts (exports NextAuth middleware, protects /dashboard and /api/orders routes), src/app/api/auth/[...nextauth]/route.ts, src/lib/auth-guard.ts (requireAuth/requireRole helpers). Full auth setup is present."
+    },
+    {
+      "text": "Generates a Stripe webhook handler file",
+      "passed": true,
+      "evidence": "File exists: src/app/api/webhooks/stripe/route.ts. Contains POST handler with signature verification, handles 4 event types (payment_intent.succeeded, payment_intent.payment_failed, charge.refunded, charge.dispute.created), stores raw events in StripeEvent table, updates order status and creates audit logs."
+    },
+    {
+      "text": "Generates a database schema with order/fulfillment-relevant tables",
+      "passed": true,
+      "evidence": "prisma/schema.prisma defines Order (with orderNumber, customerName, customerEmail, status enum with PENDING/CONFIRMED/PROCESSING/SHIPPED/DELIVERED/CANCELLED/RETURNED, totalAmount in cents, paymentStatus), OrderItem (productId, name, quantity, unitPrice), OrderStatusLog (audit trail), StripeEvent (raw webhook storage), plus User and auth tables. Comprehensive fulfillment-relevant schema."
+    },
+    {
+      "text": "Generates .env.example with Stripe-related env vars (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, etc.)",
+      "passed": true,
+      "evidence": ".env.example file exists and contains STRIPE_SECRET_KEY='sk_test_...' and STRIPE_WEBHOOK_SECRET='whsec_...' along with DATABASE_URL, NEXTAUTH_URL, and NEXTAUTH_SECRET."
+    },
+    {
+      "text": "Files are wired together — webhook handler uses the db instance, auth protects routes, etc.",
+      "passed": true,
+      "evidence": "Webhook handler imports stripe from '@/lib/stripe' and db from '@/lib/db', uses Prisma queries (db.order.findUnique, db.order.update, db.orderStatusLog.create, db.stripeEvent.upsert). Auth config imports db from '@/lib/db' and uses PrismaAdapter. Middleware protects /dashboard and /api/orders routes. The webhook handler creates OrderStatusLog entries linking webhook events to orders. All pieces are interconnected."
+    }
+  ]
+}

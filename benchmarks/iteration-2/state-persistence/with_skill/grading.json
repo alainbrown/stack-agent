@@ -1,0 +1,37 @@
+{
+  "eval_id": 5,
+  "eval_name": "state-persistence",
+  "configuration": "with_skill",
+  "expectations": [
+    {
+      "text": "Writes .stack-decisions.json after the initial recommendations",
+      "passed": true,
+      "evidence": "WRITE #1 in Turn 1 creates .stack-decisions.json immediately after initial recommendations, containing 4 suggested and 4 skipped stages. READ #1 verifies the write succeeded."
+    },
+    {
+      "text": "Updates .stack-decisions.json after each individual decision change (not just at the end)",
+      "passed": true,
+      "evidence": "The file is updated incrementally: WRITE #2 after frontend confirmed (Turn 2), WRITE #3 after auth changed to NextAuth.js (Turn 3), WRITE #4 after payments confirmed (Turn 4), and WRITE #5 to promote remaining suggested to confirmed (Turn 5). Each decision change triggers its own write."
+    },
+    {
+      "text": "State file uses correct status values (suggested/confirmed/skipped/pending) matching the table",
+      "passed": true,
+      "evidence": "The state file uses 'suggested' for initial recommendations, 'confirmed' when user explicitly chooses, and 'skipped' for categories not needed. These values are used consistently across all 5 writes. The 'pending' status was not used but was also not needed in this scenario (no stage was left in a pending state)."
+    },
+    {
+      "text": "Reads .stack-decisions.json before starting the scaffold phase",
+      "passed": true,
+      "evidence": "READ #9 (Turn 5) is explicitly labeled 'Pre-scaffold verification' and is triggered by the skill's requirement to 'Read .stack-decisions.json to load the finalized stack' before Phase 2. The read confirms all 5 confirmed and 3 skipped stages before scaffolding begins."
+    },
+    {
+      "text": "The state file contents match the final table shown to the user (no drift between file and display)",
+      "passed": true,
+      "evidence": "The final state in WRITE #5 / READ #9 shows: frontend=Next.js(confirmed), backend=skipped, database=Postgres+Drizzle(confirmed), auth=NextAuth.js(confirmed), payments=Stripe Connect(confirmed), ai=skipped, deployment=Vercel(confirmed), extras=skipped. The transcript explicitly states 'All decisions are internally consistent. No orphaned suggested stages.' and the summary confirms no drift occurred."
+    },
+    {
+      "text": "Deletes .stack-decisions.json after scaffolding completes",
+      "passed": true,
+      "evidence": "Turn 6 documents a DELETE operation: 'rm /tmp/test-state/.stack-decisions.json' is executed, and the transcript confirms 'File deleted. Directory listing confirms it's gone.' This follows the skill's instruction to delete the file once the project is scaffolded."
+    }
+  ]
+}

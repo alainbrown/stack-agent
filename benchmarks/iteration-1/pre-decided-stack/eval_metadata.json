@@ -1,0 +1,42 @@
+{
+  "eval_id": 1,
+  "eval_name": "pre-decided-stack",
+  "prompt": "I need to scaffold a project for a team task tracker. Next.js, Postgres, deploy to Vercel.",
+  "assertions": [
+    {
+      "id": "presents-table",
+      "text": "Presents a stack recommendation table with categories and status indicators",
+      "type": "qualitative"
+    },
+    {
+      "id": "respects-pre-decided",
+      "text": "Recognizes Next.js, Postgres, and Vercel as pre-decided and does not re-ask the user about them",
+      "type": "qualitative"
+    },
+    {
+      "id": "has-db-config",
+      "text": "Generates a database config/schema file (e.g. drizzle config, prisma schema, or similar ORM setup)",
+      "type": "file_exists"
+    },
+    {
+      "id": "has-env-example",
+      "text": "Generates a .env.example file listing required environment variables",
+      "type": "file_exists"
+    },
+    {
+      "id": "has-deploy-script",
+      "text": "Generates a deploy.sh script for Vercel deployment",
+      "type": "file_exists"
+    },
+    {
+      "id": "has-readme",
+      "text": "Generates a README.md with setup instructions",
+      "type": "file_exists"
+    },
+    {
+      "id": "connected-boilerplate",
+      "text": "Boilerplate files are connected — e.g. a db instance is exported and imported by API routes, not isolated demo files",
+      "type": "qualitative"
+    }
+  ]
+}

@@ -2,3 +2,5 @@ node_modules/
 dist/
 .stack-agent.json
 .stack-agent.json.tmp
+benchmarks/**/outputs/project/
+.DS_Store

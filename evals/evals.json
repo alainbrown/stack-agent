@@ -1,0 +1,23 @@
+{
+  "skill_name": "stack-agent",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to scaffold a project for a team task tracker. Next.js, Postgres, deploy to Vercel.",
+      "expected_output": "Should skip straight to confirming the pre-decided categories (frontend=Next.js, database=Postgres, deployment=Vercel), recommend remaining categories (auth, backend skip, etc.), present the table, then scaffold and wire everything together.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "scaffold me a new project, it's going to be a recipe sharing site where people can post and browse recipes",
+      "expected_output": "Should ask for a project name, then present a full stack recommendation table with opinionated picks. Walk through any stages the user wants to review. Then scaffold and wire up the boilerplate.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "set up a codebase for an internal tool — it's a dashboard for our ops team to monitor order fulfillment. needs auth, a database, and stripe webhooks to track payment status",
+      "expected_output": "Should recommend SPA-friendly frontend (Vite+React or similar since internal tool doesn't need SSR), include auth, database, and payments categories. Should wire up Stripe webhook handler, auth middleware, and database schema as connected boilerplate.",
+      "files": []
+    }
+  ]
+}

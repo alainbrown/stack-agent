@@ -1,0 +1,37 @@
+{
+  "eval_id": 5,
+  "eval_name": "state-persistence",
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Writes .stack-decisions.json after the initial recommendations",
+      "passed": false,
+      "evidence": "Baseline Claude Code does not write any state file at any point. The transcript's analysis section explicitly states: 'No decision log file — The choices made (Next.js, NextAuth.js, Stripe Connect) are never written to a file. They exist only in the conversation context.'"
+    },
+    {
+      "text": "Updates .stack-decisions.json after each individual decision change (not just at the end)",
+      "passed": false,
+      "evidence": "No .stack-decisions.json file is ever created, so no updates occur. The transcript confirms: 'No configuration file — No config.json, stack.yml, or similar file is created to record the technology selections before scaffolding begins.'"
+    },
+    {
+      "text": "State file uses correct status values (suggested/confirmed/skipped/pending) matching the table",
+      "passed": false,
+      "evidence": "No state file exists. There is no structured representation of decisions at all. The analysis states: 'No structured plan — The architecture is discussed in free-form text within chat messages. There is no structured representation (JSON, YAML, etc.) that could be parsed or resumed.'"
+    },
+    {
+      "text": "Reads .stack-decisions.json before starting the scaffold phase",
+      "passed": false,
+      "evidence": "No state file exists to read. At Turn 5 when the user says 'let's build,' Claude Code 'reconstructs the full plan by looking back through the conversation history' rather than reading a state file. The analysis notes: 'The transition from planning to building is implicit.'"
+    },
+    {
+      "text": "The state file contents match the final table shown to the user (no drift between file and display)",
+      "passed": false,
+      "evidence": "No state file is ever created, so there is no file to compare against the display. Decisions exist only in prose within the conversation context, with no structured or verifiable representation."
+    },
+    {
+      "text": "Deletes .stack-decisions.json after scaffolding completes",
+      "passed": false,
+      "evidence": "No state file was ever created, so there is nothing to delete. The baseline approach has no state lifecycle management at all."
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "eval_id": 4,
+  "eval_name": "cascading-invalidation",
+  "configuration": "with_skill",
+  "expectations": [
+    {
+      "text": "Presents an initial recommendation table before any changes",
+      "passed": true,
+      "evidence": "Turn 1 presents a full 8-row table with columns for #, Category, Recommendation, Rationale, and Status, covering Frontend, Backend, Database, Auth, Payments, AI/LLM, Deployment, and Extras before any user modifications."
+    },
+    {
+      "text": "When frontend changes from Next.js to Vite+React, explicitly identifies that backend and/or deployment are affected",
+      "passed": true,
+      "evidence": "Turn 3 explicitly states: 'Changing frontend from Next.js to Vite + React invalidates two downstream decisions: Backend (#2) ... Vite + React is a client-only SPA with no server-side API routes, so you now need a standalone backend. Deployment (#7) ... That advantage no longer applies with a Vite SPA.'"
+    },
+    {
+      "text": "Resets affected downstream decisions in the table (back to pending/suggested status)",
+      "passed": true,
+      "evidence": "In the Turn 3 updated table, Backend (#2) and Deployment (#7) are both reset to '?' with status marker changed to the pending symbol (diamond), clearly showing they need re-evaluation."
+    },
+    {
+      "text": "Walks through invalidated stages to re-decide them with new context (e.g., backend now needed since Vite has no API routes)",
+      "passed": true,
+      "evidence": "Turns 3-5 walk through each invalidated stage sequentially. Turn 3 presents backend options (Express+tRPC, Fastify, Hono) noting Vite has no API routes. After the user picks Express+tRPC in Turn 4, Turn 4 presents deployment options (Railway, Fly.io, Render) appropriate for a Node server + SPA architecture. Turn 5 finalizes with Railway."
+    },
+    {
+      "text": "Does NOT invalidate unrelated decisions (e.g., database, auth should stay unchanged)",
+      "passed": true,
+      "evidence": "Turn 3 explicitly states: 'Auth (#4 Clerk) and Database (#3 Postgres + Drizzle) are not affected — Clerk works with any React frontend, and the database choice is independent of the frontend framework.' Both remain with checkmark status throughout all subsequent tables."
+    },
+    {
+      "text": "Final table is internally consistent — no decisions that assume Next.js remain after switching to Vite",
+      "passed": true,
+      "evidence": "The final table in Turn 5 shows: Frontend = Vite + React, Backend = Express + tRPC (standalone server, not Next.js API routes), Database = Postgres + Drizzle (unchanged, no Next.js dependency), Auth = Clerk (framework-agnostic), Deployment = Railway (suited for Node servers, replacing the Next.js-specific Vercel). No remnants of Next.js assumptions remain."
+    }
+  ]
+}

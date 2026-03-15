@@ -1,0 +1,18 @@
+{
+  "name": "stack-agent",
+  "description": "Full-stack JS/TS project scaffolding skill",
+  "owner": {
+    "name": "Alain Brown"
+  },
+  "plugins": [
+    {
+      "name": "stack-agent",
+      "description": "Scaffold a full-stack JS/TS project — like create-next-app but for the entire stack",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "Alain Brown"
+      }
+    }
+  ]
+}

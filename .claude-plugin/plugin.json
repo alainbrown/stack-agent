@@ -1,0 +1,12 @@
+{
+  "name": "stack-agent",
+  "description": "Scaffold a full-stack JS/TS project — like create-next-app but for the entire stack",
+  "version": "1.0.0",
+  "author": {
+    "name": "Alain Brown"
+  },
+  "homepage": "https://github.com/alainbrown/stack-agent",
+  "repository": "https://github.com/alainbrown/stack-agent",
+  "license": "MIT",
+  "keywords": ["skills", "scaffold", "full-stack", "typescript", "nextjs", "boilerplate"]
+}

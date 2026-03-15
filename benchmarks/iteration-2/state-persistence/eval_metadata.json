@@ -1,0 +1,37 @@
+{
+  "eval_id": 5,
+  "eval_name": "state-persistence",
+  "prompt": "Test that the skill persists decisions to .stack-decisions.json and reads them back. Simulate a long conversation: user sets up project info, accepts initial recommendations, reviews and changes 3 categories one by one with questions and discussion in between, then confirms and starts scaffolding. Verify the state file is written, contains correct data at each step, and is read back before scaffolding.",
+  "assertions": [
+    {
+      "id": "writes-state-file",
+      "text": "Writes .stack-decisions.json after the initial recommendations",
+      "type": "file_exists"
+    },
+    {
+      "id": "updates-on-change",
+      "text": "Updates .stack-decisions.json after each individual decision change (not just at the end)",
+      "type": "qualitative"
+    },
+    {
+      "id": "correct-statuses",
+      "text": "State file uses correct status values (suggested/confirmed/skipped/pending) matching the table",
+      "type": "qualitative"
+    },
+    {
+      "id": "reads-before-scaffold",
+      "text": "Reads .stack-decisions.json before starting the scaffold phase",
+      "type": "qualitative"
+    },
+    {
+      "id": "state-matches-table",
+      "text": "The state file contents match the final table shown to the user (no drift between file and display)",
+      "type": "qualitative"
+    },
+    {
+      "id": "cleans-up",
+      "text": "Deletes .stack-decisions.json after scaffolding completes",
+      "type": "qualitative"
+    }
+  ]
+}

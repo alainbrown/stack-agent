@@ -1,0 +1,37 @@
+{
+  "eval_id": 4,
+  "eval_name": "cascading-invalidation",
+  "prompt": "I want to scaffold a SaaS project management tool. After the initial recommendations, the user accepts them, but then changes frontend from Next.js to Vite + React. Test that downstream decisions (backend, deployment) are properly invalidated and re-evaluated.",
+  "assertions": [
+    {
+      "id": "initial-table",
+      "text": "Presents an initial recommendation table before any changes",
+      "type": "qualitative"
+    },
+    {
+      "id": "detects-cascade",
+      "text": "When frontend changes from Next.js to Vite+React, explicitly identifies that backend and/or deployment are affected",
+      "type": "qualitative"
+    },
+    {
+      "id": "resets-downstream",
+      "text": "Resets affected downstream decisions in the table (back to pending/suggested status)",
+      "type": "qualitative"
+    },
+    {
+      "id": "re-evaluates",
+      "text": "Walks through invalidated stages to re-decide them with new context (e.g., backend now needed since Vite has no API routes)",
+      "type": "qualitative"
+    },
+    {
+      "id": "preserves-unaffected",
+      "text": "Does NOT invalidate unrelated decisions (e.g., database, auth should stay unchanged)",
+      "type": "qualitative"
+    },
+    {
+      "id": "final-consistency",
+      "text": "Final table is internally consistent — no decisions that assume Next.js remain after switching to Vite",
+      "type": "qualitative"
+    }
+  ]
+}

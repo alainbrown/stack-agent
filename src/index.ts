@@ -73,54 +73,52 @@ What needs to change?`
   }
 }
 
-async function main(fresh = false) {
+async function main(startFresh = false) {
   const cwd = process.cwd()
   const invalidationFn = createInvalidationFn()
 
-  // Handle SIGINT gracefully — atomic save handles mid-write safety
   process.on('SIGINT', () => {
     process.exit(0)
   })
 
-  // Handle --fresh: delete saved session
-  if (fresh) {
+  if (startFresh) {
     const tempManager = StageManager.resume(cwd)
     tempManager?.cleanup()
-    console.log('Session cleared. Starting fresh.\n')
   }
 
-  // Handle resume before fullscreen
   let manager: StageManager
-  const existingSession = fresh ? null : StageManager.detect(cwd)
+  const isResumed = !startFresh && StageManager.detect(cwd) !== null
 
-  if (existingSession) {
-    console.log(`\nFound saved progress for "${existingSession.progress.projectName ?? 'unnamed'}"`)
-    console.log('Run with --fresh to start over.\n')
+  if (isResumed) {
     const resumed = StageManager.resume(cwd, invalidationFn)
-    if (!resumed) {
-      console.log('Could not restore session. Starting fresh.')
-      manager = StageManager.start(cwd, invalidationFn)
-    } else {
-      manager = resumed
-    }
+    manager = resumed ?? StageManager.start(cwd, invalidationFn)
   } else {
     manager = StageManager.start(cwd, invalidationFn)
   }
 
-  // Phase 1: Fullscreen conversation
+  // Fullscreen app
   let shouldBuild = false
+  let shouldStartFresh = false
 
   const ink = withFullScreen(
     React.createElement(App, {
       manager,
+      isResumed,
       onBuild: () => { shouldBuild = true },
-      onExit: () => { shouldBuild = false },
+      onFresh: () => { shouldStartFresh = true },
+      onExit: () => {},
     }),
   )
   await ink.start()
   await ink.waitUntilExit()
 
-  // Phase 2: Post-scaffold summary (after fullscreen exits)
+  // User chose "Start fresh" from stage list — clear and restart
+  if (shouldStartFresh) {
+    manager.cleanup()
+    return main(true)
+  }
+
+  // Post-scaffold summary
   if (shouldBuild) {
     const readiness = manager.progress.deployment
       ? checkDeployReadiness(manager.progress.deployment.component)
@@ -130,17 +128,15 @@ async function main(fresh = false) {
   }
 }
 
-const args = process.argv.slice(2)
-const command = args[0]
-const isFresh = args.includes('--fresh')
+const command = process.argv[2]
 
-if (!command || command === 'init' || command === '--fresh') {
-  main(isFresh).catch((err) => {
+if (!command || command === 'init') {
+  main().catch((err) => {
     console.error(err)
     process.exit(1)
   })
 } else {
   console.error(`Unknown command: ${command}`)
-  console.error('Usage: stack-agent [init] [--fresh]')
+  console.error('Usage: stack-agent [init]')
   process.exit(1)
 }

@@ -7,23 +7,25 @@ import { isComplete, type StackProgress } from '../../agent/progress.js'
 export type StageListResult =
   | { kind: 'select'; stageId: string }
   | { kind: 'build' }
+  | { kind: 'fresh' }
   | { kind: 'cancel' }
 
 interface StageListViewProps {
   stages: StageEntry[]
   currentStageId: string | null
   progress: StackProgress
+  showFresh?: boolean  // show "Start fresh" option (when resuming a session)
   onResult: (result: StageListResult) => void
 }
 
-export function StageListView({ stages, currentStageId, progress, onResult }: StageListViewProps) {
+export function StageListView({ stages, currentStageId, progress, showFresh = false, onResult }: StageListViewProps) {
   const [showConfirm, setShowConfirm] = useState(false)
   const [showWarning, setShowWarning] = useState('')
   const [cursor, setCursor] = useState(0)
   const canBuild = isComplete(progress)
 
-  // Items: all stages + Build
-  const itemCount = stages.length + 1
+  // Items: all stages + Build + optionally Start fresh
+  const itemCount = stages.length + 1 + (showFresh ? 1 : 0)
 
   useInput((input, key) => {
     if (showConfirm) return
@@ -39,7 +41,7 @@ export function StageListView({ stages, currentStageId, progress, onResult }: St
     if (key.return) {
       if (cursor < stages.length) {
         onResult({ kind: 'select', stageId: stages[cursor].id })
-      } else {
+      } else if (cursor === stages.length) {
         // Build
         if (canBuild) {
           setShowConfirm(true)
@@ -47,6 +49,9 @@ export function StageListView({ stages, currentStageId, progress, onResult }: St
           const missing = getMissingDecisions(progress)
           setShowWarning(`Complete ${missing.join(', ')} first.`)
         }
+      } else {
+        // Start fresh
+        onResult({ kind: 'fresh' })
       }
     }
     if (key.escape) {
@@ -97,6 +102,13 @@ export function StageListView({ stages, currentStageId, progress, onResult }: St
           <Text dimColor> ({requiredRemaining(progress)} remaining)</Text>
         )}
       </Box>
+      {/* Start fresh option */}
+      {showFresh && (
+        <Box>
+          <Text>{cursor === stages.length + 1 ? '❯ ' : '  '}</Text>
+          <Text dimColor>Start fresh</Text>
+        </Box>
+      )}
     </Box>
   )
 }

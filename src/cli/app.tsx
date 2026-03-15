@@ -20,11 +20,13 @@ type AppView = 'project_info' | 'loading' | 'stage_list' | 'conversation' | 'inp
 
 interface AppProps {
   manager: StageManager
+  isResumed: boolean
   onBuild: () => void
+  onFresh: () => void
   onExit: () => void
 }
 
-export function App({ manager, onBuild, onExit }: AppProps) {
+export function App({ manager, isResumed, onBuild, onFresh, onExit }: AppProps) {
   const app = useApp()
   const { width, height } = useScreenSize()
 
@@ -125,6 +127,9 @@ export function App({ manager, onBuild, onExit }: AppProps) {
         syncState()
       }
       runStage(result.stageId)
+    } else if (result.kind === 'fresh') {
+      onFresh()
+      app.exit()
     } else if (result.kind === 'build') {
       setView('scaffold')
       setScaffoldSteps([])
@@ -236,6 +241,7 @@ export function App({ manager, onBuild, onExit }: AppProps) {
             stages={stages}
             currentStageId={currentStage?.id ?? null}
             progress={progress}
+            showFresh={isResumed}
             onResult={handleStageResult}
           />
         )}

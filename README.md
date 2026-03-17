@@ -5,9 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/node/v/stack-agent)](https://nodejs.org)
 
-AI-powered CLI that helps developers choose and scaffold full-stack applications through a fullscreen terminal UI.
+Have a complete working stack in minutes! This AI agent CLI helps developers choose and scaffold full-stack applications through an interactive terminal UI.
 
-A senior software architect in your terminal — it recommends your entire stack, lets you review and refine each decision, then scaffolds the project with integration code.
+A senior software architect in your terminal — it recommends your entire stack, lets you review and refine each decision, then scaffolds the project with integration code. The scaffold includes fully working code in a launchable state, as well as instructions and scripts for deployment.
 
 ## Usage
 
